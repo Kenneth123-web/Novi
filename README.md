@@ -62,7 +62,7 @@ App ID，全局唯一，换个 Apple ID 装机就要在同一个文件里改 `PR
 点击后面的界面就没人真正看过。
 
 ```bash
-xcrun simctl launch <UDID> com.novi.app \
+xcrun simctl launch <UDID> luke.novi.app \
   -demoTab market|messages|me       # 直接打开某个底栏 tab
   -demoLane following|nearby        # 首页停在 关注 / 同城
   -demoNote n5                      # 直接推进某条笔记详情（first = 第一条）
