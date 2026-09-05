@@ -23,8 +23,8 @@ struct TabBar: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            item(.home, "首页")
-            item(.market, "市集")
+            item(.home, "Home")
+            item(.market, "Market")
 
             Button(action: onCompose) {
                 Image(systemName: "plus")
@@ -36,8 +36,8 @@ struct TabBar: View {
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity)
 
-            item(.messages, "消息", badge: 60)
-            item(.me, "我")
+            item(.messages, "Messages", badge: 60)
+            item(.me, "Me")
         }
         .padding(.horizontal, 8)
         .frame(height: 50)
@@ -58,7 +58,7 @@ struct TabBar: View {
         return Button {
             tab = t
         } label: {
-            Text(label)
+            Text(label.localized)
                 .font(.system(size: on ? 17 : 15.5, weight: on ? .semibold : .regular))
                 .foregroundStyle(on ? NV.ink : NV.inkFaint)
                 .overlay(alignment: .topTrailing) {

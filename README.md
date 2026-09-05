@@ -67,6 +67,8 @@ xcrun simctl launch <UDID> luke.novi.app \
   -demoLane following|nearby        # 首页停在 关注 / 同城
   -demoNote n5                      # 直接推进某条笔记详情（first = 第一条）
   -demoPublish YES                  # 打开发布面板
+  -demoSettings YES                 # 打开“我”页的设置面板（语言选择）
+  -demoLang ar                      # 指定界面语言：en / ar / es / fr / ru / zh-Hans / zh-Hant
 ```
 
 ## 几个不是随手写的决定
@@ -105,6 +107,22 @@ xcrun simctl launch <UDID> luke.novi.app \
 
 **发布面板明说没接后端。** 一个看起来会动、实际什么都不做的控件，会让人怀疑屏幕
 上其余部分也是假的。
+
+**英文文案就是 localization key。** 界面文案的源语言是英文，`Localizable.xcstrings`
+里每个 key 下面挂阿 / 西 / 法 / 俄 / 简中 / 繁中六种翻译；缺翻译就掉回 key 本身，
+也就是一句读得通的英文，而不是 `home.tab` 这种死钥匙。改文案 = 改 key，六种语言
+必须同步重写。示例内容（`Fixtures.swift` 的笔记、评论、商品）不做多语言 —— 那是
+数据，不是界面。
+
+**界面语言在应用内选，压过系统语言。** 「我」页的齿轮 → Language。`Text("…")` 字面量
+跟 `environment(\.locale)` 走；存在变量里的文案（枚举、选项行）走 `".localized"`，
+显式钉住所选语言的 `.lproj`，绝不掉进系统语言表 —— 否则中文手机选英文会一半中文
+一半英文。阿语要整个界面镜像：iOS 17 会忽略根部覆盖的 `\.layoutDirection`（场景的
+trait collection 赢），所以同时在 UIKit 层 force `semanticContentAttribute`，两个
+机制说同一件事，各自覆盖自己覆盖不了的系统版本。
+
+**数字格式也分语言。** 万是中文单位，英文读者看到「1.3万」看到的是墙不是数字。
+`nv_count` 在中文下照旧 1.3万，其他语言 12.8k。
 
 ## 还没做
 

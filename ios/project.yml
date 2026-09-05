@@ -12,7 +12,9 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_LANGUAGE: zh-Hans
+    # English: the catalog keys ARE the English UI copy (see
+    # Novi/Localizable.xcstrings and AppLocalization.swift).
+    DEVELOPMENT_LANGUAGE: en
 
 targets:
   Novi:

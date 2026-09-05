@@ -61,7 +61,10 @@ struct NoteDetailView: View {
             Button {
                 withAnimation(.easeOut(duration: 0.18)) { following.toggle() }
             } label: {
-                Text(following ? "已关注" : "关注")
+                // "Following (button)" is a manual catalog key: English reuses
+                // the word "Following" for the feed lane, but Chinese splits
+                // the two into 关注 and 已关注.
+                Text(following ? "Following (button)".localized : "Follow".localized)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(following ? NV.inkFaint : .white)
                     .frame(width: 58, height: 28)
@@ -166,7 +169,7 @@ struct NoteDetailView: View {
     private var comments: some View {
         let list = Fixtures.comments(for: note)
         return VStack(alignment: .leading, spacing: 0) {
-            Text("共 \(nv_count(note.comments)) 条评论")
+            Text("%@ comments".localized(nv_count(note.comments)))
                 .font(.system(size: 13))
                 .foregroundStyle(NV.inkFaint)
                 .padding(.horizontal, 16)
@@ -179,7 +182,7 @@ struct NoteDetailView: View {
                 }
             }
 
-            Text("- 没有更多评论了 -")
+            Text("- No more comments -")
                 .font(.system(size: 12))
                 .foregroundStyle(NV.inkGhost)
                 .frame(maxWidth: .infinity)
@@ -192,7 +195,7 @@ struct NoteDetailView: View {
     private var actionBar: some View {
         HStack(spacing: 16) {
             HStack {
-                Text("说点什么...")
+                Text("Say something...")
                     .font(.system(size: 13.5))
                     .foregroundStyle(NV.inkGhost)
                 Spacer()
@@ -258,7 +261,7 @@ private struct CommentRow: View {
                         .font(.system(size: 12.5))
                         .foregroundStyle(NV.inkFaint)
                     if comment.isAuthor {
-                        Text("作者")
+                        Text("Author")
                             .font(.system(size: 9.5))
                             .foregroundStyle(NV.red)
                             .padding(.horizontal, 4)

@@ -6,7 +6,8 @@ import SwiftUI
 /// like the same app one tab over.
 struct MarketView: View {
     @State private var category = 0
-    private let categories = ["推荐", "穿搭", "家居", "咖啡", "数码", "美妆", "手作", "户外"]
+    /// English catalog keys; translated at the point of display.
+    private let categories = ["For You", "Outfits", "Home & Living", "Coffee", "Tech", "Beauty", "Handmade", "Outdoors"]
 
     var body: some View {
         VStack(spacing: 0) {
@@ -34,7 +35,7 @@ struct MarketView: View {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 14, weight: .medium))
                     .foregroundStyle(NV.inkFaint)
-                Text("搜索你想要的")
+                Text("Search for what you want")
                     .font(.system(size: 13.5))
                     .foregroundStyle(NV.inkGhost)
                 Spacer()
@@ -57,7 +58,7 @@ struct MarketView: View {
             HStack(spacing: 18) {
                 ForEach(Array(categories.enumerated()), id: \.offset) { i, name in
                     VStack(spacing: 4) {
-                        Text(name)
+                        Text(name.localized)
                             .font(.system(size: i == category ? 15.5 : 14.5,
                                           weight: i == category ? .semibold : .regular))
                             .foregroundStyle(i == category ? NV.ink : NV.inkFaint)

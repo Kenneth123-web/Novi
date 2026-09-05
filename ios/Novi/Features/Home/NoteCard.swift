@@ -122,7 +122,7 @@ private struct BadgeChip: View {
                 .foregroundStyle(.white)
                 .frame(width: 14, height: 14)
                 .background(NV.red, in: Circle())
-            Text(label)
+            Text(label.localized)
                 .font(.system(size: 11.5))
                 .foregroundStyle(NV.inkFaint)
         }
@@ -135,7 +135,7 @@ private struct LiveFlag: View {
         HStack(spacing: 3) {
             Image(systemName: "dot.radiowaves.left.and.right")
                 .font(.system(size: 9, weight: .semibold))
-            Text("直播中").font(.system(size: 10, weight: .semibold))
+            Text("LIVE").font(.system(size: 10, weight: .semibold))
         }
         .foregroundStyle(.white)
         .padding(.horizontal, 7)

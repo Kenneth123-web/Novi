@@ -8,24 +8,25 @@ import SwiftUI
 struct PublishSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// Names and notes are English catalog keys; translated at the point of display.
     private let options: [(String, String, String)] = [
-        ("photo.on.rectangle", "图文", "最多 18 张图片"),
-        ("video", "视频", "最长 15 分钟"),
-        ("text.alignleft", "文字", "只写字也可以"),
+        ("photo.on.rectangle", "Photo post", "Up to 18 photos"),
+        ("video", "Video", "Up to 15 minutes"),
+        ("text.alignleft", "Text post", "No photos needed"),
     ]
 
     var body: some View {
         VStack(spacing: 0) {
             HStack {
-                Button("取消") { dismiss() }
+                Button("Cancel") { dismiss() }
                     .font(.system(size: 15))
                     .foregroundStyle(NV.inkSoft)
                 Spacer()
-                Text("发布")
+                Text("Post")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(NV.ink)
                 Spacer()
-                Text("取消").font(.system(size: 15)).opacity(0)
+                Text("Cancel").font(.system(size: 15)).opacity(0)
             }
             .padding(.horizontal, 18)
             .frame(height: 52)
@@ -40,10 +41,10 @@ struct PublishSheet: View {
                             .frame(width: 42, height: 42)
                             .background(NV.fill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(name)
+                            Text(name.localized)
                                 .font(.system(size: 15.5, weight: .medium))
                                 .foregroundStyle(NV.ink)
-                            Text(note)
+                            Text(note.localized)
                                 .font(.system(size: 12))
                                 .foregroundStyle(NV.inkFaint)
                         }
@@ -58,7 +59,7 @@ struct PublishSheet: View {
             }
             .padding(.top, 10)
 
-            Text("这是界面复刻，发布还没有接后端。")
+            Text("This is an interface replica. Posting isn't wired up yet.")
                 .font(.system(size: 12))
                 .foregroundStyle(NV.inkGhost)
                 .padding(.top, 18)

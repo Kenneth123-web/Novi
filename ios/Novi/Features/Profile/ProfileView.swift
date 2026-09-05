@@ -9,7 +9,9 @@ import SwiftUI
 struct ProfileView: View {
     private let me = Fixtures.me
     @State private var tab = 0
-    private let tabs = ["笔记", "收藏", "赞过"]
+    @State private var settings = Demo.settings
+    /// English catalog keys; translated at the point of display.
+    private let tabs = ["Notes", "Saved", "Liked"]
 
     private var notes: [Note] {
         switch tab {
@@ -36,6 +38,9 @@ struct ProfileView: View {
         .scrollIndicators(.hidden)
         .background(NV.page)
         .ignoresSafeArea(edges: .top)
+        .sheet(isPresented: $settings) {
+            SettingsSheet()
+        }
     }
 
     private var banner: some View {
@@ -50,7 +55,9 @@ struct ProfileView: View {
             .overlay(alignment: .topTrailing) {
                 HStack(spacing: 18) {
                     Image(systemName: "line.3.horizontal")
-                    Image(systemName: "gearshape")
+                    Button { settings = true } label: {
+                        Image(systemName: "gearshape")
+                    }
                 }
                 .font(.system(size: 19, weight: .light))
                 .foregroundStyle(.white)
@@ -70,7 +77,7 @@ struct ProfileView: View {
                 Text(me.name)
                     .font(.system(size: 19, weight: .semibold))
                     .foregroundStyle(NV.ink)
-                Text("Novi 号：" + me.noviID)
+                Text("Novi ID: %@".localized(me.noviID))
                     .font(.system(size: 12))
                     .foregroundStyle(NV.inkFaint)
             }
@@ -84,15 +91,15 @@ struct ProfileView: View {
 
     private var stats: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(me.bio.isEmpty ? "还没有简介" : me.bio)
+            Text(me.bio.isEmpty ? "No bio yet".localized : me.bio)
                 .font(.system(size: 13.5))
                 .foregroundStyle(NV.inkSoft)
                 .fixedSize(horizontal: false, vertical: true)
 
             HStack(spacing: 26) {
-                count(me.following, "关注")
-                count(me.followers, "粉丝")
-                count(me.liked, "获赞与收藏")
+                count(me.following, "Following")
+                count(me.followers, "Followers")
+                count(me.liked, "Likes & saves")
                 Spacer()
             }
         }
@@ -107,7 +114,7 @@ struct ProfileView: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(NV.ink)
                 .monospacedDigit()
-            Text(label)
+            Text(label.localized)
                 .font(.system(size: 11.5))
                 .foregroundStyle(NV.inkFaint)
         }
@@ -115,14 +122,14 @@ struct ProfileView: View {
 
     private var actions: some View {
         HStack(spacing: 10) {
-            Text("编辑资料")
+            Text("Edit profile")
                 .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(NV.ink)
                 .frame(maxWidth: .infinity)
                 .frame(height: 32)
                 .background(Capsule().stroke(NV.hairline, lineWidth: 1))
 
-            Text("分享")
+            Text("Share")
                 .font(.system(size: 13.5, weight: .medium))
                 .foregroundStyle(NV.ink)
                 .frame(maxWidth: .infinity)
@@ -144,7 +151,7 @@ struct ProfileView: View {
         HStack(spacing: 0) {
             ForEach(Array(tabs.enumerated()), id: \.offset) { i, name in
                 VStack(spacing: 5) {
-                    Text(name)
+                    Text(name.localized)
                         .font(.system(size: 14.5, weight: i == tab ? .semibold : .regular))
                         .foregroundStyle(i == tab ? NV.ink : NV.inkFaint)
                     Capsule()

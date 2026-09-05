@@ -35,6 +35,10 @@ enum Demo {
 
     static var publish: Bool { d.bool(forKey: "demoPublish") }
 
+    /// `-demoSettings YES` opens the profile's settings sheet — the language
+    /// picker lives there, and a sheet is otherwise unreachable for simctl.
+    static var settings: Bool { d.bool(forKey: "demoSettings") }
+
     /// Launch arguments live in UserDefaults for the whole process, so a
     /// `.task`-driven route re-fires every time its view reappears — i.e. on
     /// every back tap. A `static` flag, not `@State`, which a tab switch

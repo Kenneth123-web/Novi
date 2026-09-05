@@ -1,0 +1,500 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Home": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "الرئيسية" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Inicio" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Accueil" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Главная" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "首页" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "首頁" } }
+      }
+    },
+    "Market": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "السوق" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mercado" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Marché" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Маркет" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "市集" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "市集" } }
+      }
+    },
+    "Messages": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "الرسائل" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Mensajes" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Messages" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сообщения" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "消息" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "訊息" } }
+      }
+    },
+    "Me": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "أنا" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Yo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Moi" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Я" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "我" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "我" } }
+      }
+    },
+    "Following": {
+      "comment": "Feed lane and profile stats label. The follow button's engaged state is the separate key \"Following (button)\" — Chinese distinguishes 关注 from 已关注 where English uses one word.",
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "أتابع" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Siguiendo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Abonnements" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Подписки" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关注" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "關注" } }
+      }
+    },
+    "Following (button)": {
+      "extractionState": "manual",
+      "comment": "Engaged state of the follow button on a note. Manual key because the English word collides with the \"Following\" feed lane, while Chinese needs 已关注 here and 关注 there.",
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Following" } },
+        "ar": { "stringUnit": { "state": "translated", "value": "تتابعه" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Siguiendo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Suivi" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Вы подписаны" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "已关注" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "已關注" } }
+      }
+    },
+    "Discover": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "اكتشف" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Descubrir" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Découvrir" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Интересное" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "发现" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "發現" } }
+      }
+    },
+    "Nearby": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "القريب" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Cerca" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "À proximité" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Рядом" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "同城" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "同城" } }
+      }
+    },
+    "- That's everything -": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "- هذا كل شيء -" } },
+        "es": { "stringUnit": { "state": "translated", "value": "- Eso es todo -" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "- C'est tout -" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "- Это всё -" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "- 到底啦 -" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "- 到底啦 -" } }
+      }
+    },
+    "LIVE": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "مباشر" } },
+        "es": { "stringUnit": { "state": "translated", "value": "En vivo" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "En direct" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Эфир" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "直播中" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "直播中" } }
+      }
+    },
+    "Trending": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "رائج" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Tendencia" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Tendance" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Тренд" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "热点" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "熱點" } }
+      }
+    },
+    "Search for what you want": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "ابحث عما تريد" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Busca lo que quieras" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Recherche ce que tu veux" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Ищи, что хочешь" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "搜索你想要的" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "搜尋你想要的" } }
+      }
+    },
+    "For You": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "لك" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Para ti" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Pour toi" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Для тебя" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "推荐" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "推薦" } }
+      }
+    },
+    "Outfits": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "إطلالات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Outfits" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Tenues" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Образы" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "穿搭" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "穿搭" } }
+      }
+    },
+    "Home & Living": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "المنزل" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hogar" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Maison" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Дом" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "家居" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "家居" } }
+      }
+    },
+    "Coffee": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "قهوة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Café" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Café" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Кофе" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "咖啡" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "咖啡" } }
+      }
+    },
+    "Tech": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "تقنية" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Tecnología" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Tech" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Техника" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "数码" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "數碼" } }
+      }
+    },
+    "Beauty": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "جمال" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Belleza" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Beauté" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Красота" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "美妆" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "美妝" } }
+      }
+    },
+    "Handmade": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "صناعة يدوية" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hecho a mano" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Fait main" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Хендмейд" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "手作" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "手作" } }
+      }
+    },
+    "Outdoors": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "أنشطة خارجية" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Aire libre" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Plein air" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "На природе" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "户外" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "戶外" } }
+      }
+    },
+    "Likes and saves": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "الإعجابات والحفظ" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Me gusta y guardados" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "J'aime et enregistrements" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Лайки и сохранённые" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "赞和收藏" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "讚和收藏" } }
+      }
+    },
+    "New followers": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "متابعون جدد" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Nuevos seguidores" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Nouveaux abonnés" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Новые подписчики" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "新增关注" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "新增關注" } }
+      }
+    },
+    "Comments and mentions": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "التعليقات والإشارات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Comentarios y menciones" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Commentaires et mentions" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Комментарии и упоминания" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "评论和@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "評論和@" } }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "إلغاء" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Cancelar" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Annuler" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Отмена" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "取消" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "取消" } }
+      }
+    },
+    "Post": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "نشر" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Publicar" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Publier" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Опубликовать" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "发布" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "發佈" } }
+      }
+    },
+    "Photo post": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "صور ونص" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Fotos con texto" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Photos et texte" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Фото с текстом" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "图文" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "圖文" } }
+      }
+    },
+    "Up to 18 photos": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "حتى 18 صورة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hasta 18 fotos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jusqu'à 18 photos" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "До 18 фото" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最多 18 张图片" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "最多 18 張圖片" } }
+      }
+    },
+    "Video": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "فيديو" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Video" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Vidéo" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Видео" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "视频" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "影片" } }
+      }
+    },
+    "Up to 15 minutes": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "حتى 15 دقيقة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Hasta 15 minutos" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jusqu'à 15 minutes" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "До 15 минут" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "最长 15 分钟" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "最長 15 分鐘" } }
+      }
+    },
+    "Text post": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "نص" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Solo texto" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Texte" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Текст" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "文字" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "文字" } }
+      }
+    },
+    "No photos needed": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "يكفي أن تكتب" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Escribir ya basta" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Écrire suffit" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Можно просто писать" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "只写字也可以" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "只寫字也可以" } }
+      }
+    },
+    "This is an interface replica. Posting isn't wired up yet.": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "هذه نسخة طبق الأصل من الواجهة. النشر غير مربوط بعد." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Esto es una réplica de la interfaz. Publicar aún no está conectado." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Ceci est une réplique de l'interface. La publication n'est pas encore branchée." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Это копия интерфейса. Публикация пока не подключена." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "这是界面复刻，发布还没有接后端。" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "這是介面復刻，發佈還沒有接後端。" } }
+      }
+    },
+    "Notes": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "ملاحظات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Notas" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Notes" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Заметки" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "笔记" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "筆記" } }
+      }
+    },
+    "Saved": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "المحفوظات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Guardados" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Enregistrés" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Сохранённое" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "收藏" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "收藏" } }
+      }
+    },
+    "Liked": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "المعجبات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Me gusta" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Aimés" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Понравившиеся" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "赞过" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "讚過" } }
+      }
+    },
+    "No bio yet": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "لا نبذة بعد" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Aún no hay bio" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Pas encore de bio" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Пока без описания" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "还没有简介" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "還沒有簡介" } }
+      }
+    },
+    "Novi ID: %@": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "معرّف Novi: %@" } },
+        "es": { "stringUnit": { "state": "translated", "value": "ID de Novi: %@" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "ID Novi : %@" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Novi ID: %@" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "Novi 号：%@" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "Novi 號：%@" } }
+      }
+    },
+    "Followers": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "المتابعون" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Seguidores" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Abonnés" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Подписчики" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "粉丝" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "粉絲" } }
+      }
+    },
+    "Likes & saves": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "الإعجابات والحفظ" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Me gusta y guardados" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "J'aime et enregistrements" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Лайки и сохранения" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "获赞与收藏" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "獲讚與收藏" } }
+      }
+    },
+    "Edit profile": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "تعديل الملف" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Editar perfil" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Modifier le profil" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Изменить профиль" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "编辑资料" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "編輯資料" } }
+      }
+    },
+    "Share": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "مشاركة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Compartir" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Partager" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Поделиться" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "分享" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "分享" } }
+      }
+    },
+    "Follow": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "متابعة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Seguir" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Suivre" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Подписаться" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "关注" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "關注" } }
+      }
+    },
+    "%@ comments": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "%@ تعليقات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "%@ comentarios" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "%@ commentaires" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "%@ комментариев" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "共 %@ 条评论" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "共 %@ 則評論" } }
+      }
+    },
+    "- No more comments -": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "- لا مزيد من التعليقات -" } },
+        "es": { "stringUnit": { "state": "translated", "value": "- No hay más comentarios -" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "- Plus de commentaires -" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "- Больше комментариев нет -" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "- 没有更多评论了 -" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "- 沒有更多評論了 -" } }
+      }
+    },
+    "Say something...": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "قل شيئًا..." } },
+        "es": { "stringUnit": { "state": "translated", "value": "Di algo..." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Dis quelque chose..." } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Скажи что-нибудь..." } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "说点什么..." } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "說點什麼..." } }
+      }
+    },
+    "Author": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "المؤلف" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Autor" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Auteur" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Автор" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "作者" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "作者" } }
+      }
+    },
+    "Settings": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "الإعدادات" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Ajustes" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Réglages" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Настройки" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "设置" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "設定" } }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "اللغة" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Idioma" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Langue" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Язык" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "语言" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "語言" } }
+      }
+    },
+    "System": {
+      "localizations": {
+        "ar": { "stringUnit": { "state": "translated", "value": "النظام" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Sistema" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Système" } },
+        "ru": { "stringUnit": { "state": "translated", "value": "Системный" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "跟随系统" } },
+        "zh-Hant": { "stringUnit": { "state": "translated", "value": "跟隨系統" } }
+      }
+    }
+  },
+  "version": "1.0"
+}

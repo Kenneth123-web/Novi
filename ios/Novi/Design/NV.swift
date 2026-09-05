@@ -64,10 +64,24 @@ extension View {
 }
 
 /// Counts are printed the way the app prints them: 999 stays 999, 1000 becomes
-/// 1.0万. Rounding down is deliberate — a card claiming more likes than the
+/// 1.0万. 万 is a Chinese unit — in any other language the same count prints as
+/// 10.0k, because showing 万 to a reader of English is showing them a wall, not
+/// a number. Rounding down is deliberate — a card claiming more likes than the
 /// note has is the one number on screen that would be false.
 func nv_count(_ n: Int) -> String {
-    if n < 10_000 { return "\(n)" }
-    let w = Double(n) / 10_000
-    return String(format: w >= 100 ? "%.0f万" : "%.1f万", w)
+    switch AppLocalization.code {
+    case "zh-Hans", "zh-Hant":
+        if n < 10_000 { return "\(n)" }
+        let w = Double(n) / 10_000
+        let unit = AppLocalization.code == "zh-Hant" ? "萬" : "万"
+        return String(format: w >= 100 ? "%.0f%@" : "%.1f%@", w, unit)
+    default:
+        if n < 1_000 { return "\(n)" }
+        if n < 1_000_000 {
+            let k = Double(n) / 1_000
+            return String(format: k >= 100 ? "%.0fk" : "%.1fk", k)
+        }
+        let m = Double(n) / 1_000_000
+        return String(format: m >= 100 ? "%.0fM" : "%.1fM", m)
+    }
 }

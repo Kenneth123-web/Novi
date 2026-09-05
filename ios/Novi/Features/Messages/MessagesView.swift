@@ -6,10 +6,11 @@ import SwiftUI
 /// would make the number on the bar refer to something the reader has to scroll
 /// to find.
 struct MessagesView: View {
+    /// Names are English catalog keys; translated at the point of display.
     private let buckets: [(String, String, Color, Int)] = [
-        ("赞和收藏", "heart.fill", Color(hex: 0xFF6B81), 42),
-        ("新增关注", "person.fill.badge.plus", Color(hex: 0x6FA8F5), 11),
-        ("评论和@", "bubble.left.fill", Color(hex: 0xFFB055), 7),
+        ("Likes and saves", "heart.fill", Color(hex: 0xFF6B81), 42),
+        ("New followers", "person.fill.badge.plus", Color(hex: 0x6FA8F5), 11),
+        ("Comments and mentions", "bubble.left.fill", Color(hex: 0xFFB055), 7),
     ]
 
     var body: some View {
@@ -37,7 +38,7 @@ struct MessagesView: View {
                                             .offset(x: 6, y: -4)
                                     }
                                 }
-                            Text(name)
+                            Text(name.localized)
                                 .font(.system(size: 12.5))
                                 .foregroundStyle(NV.inkSoft)
                         }
@@ -62,7 +63,7 @@ struct MessagesView: View {
 
     private var header: some View {
         ZStack {
-            Text("消息")
+            Text("Messages")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(NV.ink)
             HStack {

@@ -39,9 +39,10 @@ struct Note: Identifiable, Hashable {
         case live         // 直播中
         case video        // a play glyph in the cover's corner
 
+        /// English catalog key; translated at the point of display.
         var label: String? {
             switch self {
-            case .hot: return "热点"
+            case .hot: return "Trending"
             case .live: return nil  // drawn as a flag on the cover instead
             case .video: return nil
             }

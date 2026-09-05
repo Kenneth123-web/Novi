@@ -3,11 +3,12 @@ import SwiftUI
 enum HomeTab: Int, CaseIterable, Hashable {
     case following, discover, nearby
 
+    /// English catalog keys; translated at the point of display.
     var title: String {
         switch self {
-        case .following: return "关注"
-        case .discover: return "发现"
-        case .nearby: return "同城"
+        case .following: return "Following"
+        case .discover: return "Discover"
+        case .nearby: return "Nearby"
         }
     }
 
@@ -105,7 +106,7 @@ private struct TabItem: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(tab.title)
+            Text(tab.title.localized)
                 // Weight AND size change together. Weight alone is too quiet
                 // between 中文 glyphs, which have no ascenders to thicken.
                 .font(.system(size: selected ? 18 : 16, weight: selected ? .semibold : .regular))
@@ -159,7 +160,7 @@ private struct Feed: View {
             .padding(.horizontal, NV.gutter)
             .padding(.top, NV.gutter)
 
-            Text("- 到底啦 -")
+            Text("- That's everything -")
                 .font(.system(size: 12))
                 .foregroundStyle(NV.inkGhost)
                 .frame(maxWidth: .infinity)
