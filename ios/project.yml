@@ -1,9 +1,13 @@
 name: Novi
 options:
-  bundleIdPrefix: com.novi
+  bundleIdPrefix: luke.novi
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
+
+configFiles:
+  Debug: Configs/Base.xcconfig
+  Release: Configs/Base.xcconfig
 
 settings:
   base:
@@ -18,7 +22,7 @@ targets:
       - path: Novi
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.novi.app
+        PRODUCT_BUNDLE_IDENTIFIER: luke.novi.app
         PRODUCT_NAME: Novi
         INFOPLIST_KEY_CFBundleDisplayName: Novi
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
@@ -28,7 +32,21 @@ targets:
         INFOPLIST_KEY_UIUserInterfaceStyle: Light
         TARGETED_DEVICE_FAMILY: "1"
         GENERATE_INFOPLIST_FILE: YES
-        CODE_SIGN_IDENTITY: ""
-        CODE_SIGNING_REQUIRED: NO
-        CODE_SIGNING_ALLOWED: NO
         ENABLE_USER_SCRIPT_SANDBOXING: NO
+
+        # Signing. A device build MUST be signed — an unsigned .app installs
+        # nowhere. The simulator needs no signature and no team, which is what
+        # keeps `xcodebuild -sdk iphonesimulator` working on a machine that has
+        # never seen this project's provisioning.
+        #
+        # These were once unscoped `CODE_SIGNING_ALLOWED: NO`, and that is
+        # exactly the "The executable is not codesigned" failure: automatic
+        # signing provisions the target correctly, then the build is told not
+        # to sign, and installd rejects the bundle.
+        CODE_SIGN_STYLE: Automatic
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": Apple Development
+        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": NO
+        "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]": NO
+        # DEVELOPMENT_TEAM comes from Configs/Local.xcconfig, which is
+        # gitignored — a team id is per-person, and a device build under
+        # somebody else's Apple ID cannot register this bundle id anyway.

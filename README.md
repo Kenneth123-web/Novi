@@ -21,11 +21,40 @@ cd ios && xcodegen generate
 xcodebuild -project Novi.xcodeproj -scheme Novi \
   -sdk iphonesimulator \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath build build
+  -derivedDataPath /tmp/novi-dd build
 ```
 
 `xcodegen` 是必需的：工程用显式文件引用，新加的 `.swift` 在重新 generate 之前
-对构建是不存在的。
+对构建是不存在的。**改签名、bundle id、Info.plist 请改 `project.yml`，不要在
+Xcode 里改** —— 下一次 generate 会把 Xcode 里的改动覆盖掉。
+
+## 真机
+
+```bash
+cp ios/Configs/Local.xcconfig.example ios/Configs/Local.xcconfig   # 填自己的 Team ID
+cd ios && xcodegen generate
+xcodebuild -project Novi.xcodeproj -scheme Novi -sdk iphoneos \
+  -destination 'id=<device udid>' -derivedDataPath /tmp/novi-dd \
+  -allowProvisioningUpdates build
+```
+
+两件都是踩过的坑：
+
+**`DerivedData` 不能放在这个工程目录里。** 仓库在 iCloud 同步的 Documents 下，
+文件同步会给产物打上 `com.apple.FinderInfo` 和 `com.apple.fileprovider.*` 扩展
+属性，codesign 直接拒签：`resource fork, Finder information, or similar detritus
+not allowed`。所以 `-derivedDataPath` 指到同步范围外（Xcode 自己的默认位置
+`~/Library/Developer/Xcode/DerivedData` 本来就在外面，所以从 Xcode 里跑没这个
+问题）。
+
+**关签名只能针对模拟器。** `project.yml` 里是
+`CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]` 而不是无条件的
+`CODE_SIGNING_ALLOWED: NO` —— 后者会让自动签名正常配好描述文件、然后不签，
+装机时报 `The executable is not codesigned`。模拟器不需要签名也不需要 team，
+这样一台没见过本工程描述文件的机器仍然能跑模拟器构建。
+
+Team ID 在 `ios/Configs/Local.xcconfig`（gitignored）。`luke.novi.app` 是显式
+App ID，全局唯一，换个 Apple ID 装机就要在同一个文件里改 `PRODUCT_BUNDLE_IDENTIFIER`。
 
 ## demo 启动参数
 

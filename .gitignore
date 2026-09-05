@@ -3,9 +3,11 @@ ios/build/
 ios/DerivedData/
 *.xcuserstate
 xcuserdata/
-ios/Novi.xcodeproj/project.xcworkspace/xcuserdata/
 
 # xcodegen output — regenerate with `cd ios && xcodegen generate`
 ios/Novi.xcodeproj/
+
+# Per-person signing
+ios/Configs/Local.xcconfig
 
 .DS_Store

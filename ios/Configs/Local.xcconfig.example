@@ -1,0 +1,11 @@
+// Copy to Local.xcconfig (gitignored) and fill in your own values.
+//
+// DEVELOPMENT_TEAM is the 10-character Team ID from
+// developer.apple.com/account → Membership, or from Xcode →
+// Settings → Accounts → your team.
+DEVELOPMENT_TEAM = XXXXXXXXXX
+
+// Only needed if luke.novi.app is already registered to someone else's team —
+// an explicit App ID is globally unique, so a device build under a different
+// Apple ID needs its own id.
+// PRODUCT_BUNDLE_IDENTIFIER = com.yourname.novi
