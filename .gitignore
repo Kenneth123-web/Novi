@@ -1,0 +1,11 @@
+# Xcode
+ios/build/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
+ios/Novi.xcodeproj/project.xcworkspace/xcuserdata/
+
+# xcodegen output — regenerate with `cd ios && xcodegen generate`
+ios/Novi.xcodeproj/
+
+.DS_Store

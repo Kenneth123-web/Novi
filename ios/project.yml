@@ -1,0 +1,34 @@
+name: Novi
+options:
+  bundleIdPrefix: com.novi
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_LANGUAGE: zh-Hans
+
+targets:
+  Novi:
+    type: application
+    platform: iOS
+    sources:
+      - path: Novi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.novi.app
+        PRODUCT_NAME: Novi
+        INFOPLIST_KEY_CFBundleDisplayName: Novi
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleDefault
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UIUserInterfaceStyle: Light
+        TARGETED_DEVICE_FAMILY: "1"
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
