@@ -1,39 +1,43 @@
 import SwiftUI
 
 /// Launch arguments, so every screen can be reached and screenshotted without
-/// a Simulator GUI to tap in. `xcrun simctl` can launch and capture but cannot
-/// touch, so a screen that is three taps deep is otherwise unverifiable on this
-/// machine — and an unverified screen is one nobody has actually looked at.
+/// a GUI to tap in. `simctl` can launch and capture but cannot touch, so a
+/// screen three taps deep is otherwise a screen nobody has actually looked at.
 enum Demo {
     private static let d = UserDefaults.standard
 
     static var tab: RootTab {
         switch d.string(forKey: "demoTab") {
-        case "market": return .market
-        case "messages": return .messages
-        case "me": return .me
+        case "explore": return .explore
+        case "ask": return .ask
+        case "passport": return .passport
+        case "profile": return .profile
         default: return .home
         }
     }
 
-    static var lane: HomeTab? {
-        switch d.string(forKey: "demoLane") {
-        case "following": return .following
-        case "nearby": return .nearby
-        case "discover": return .discover
-        default: return nil
-        }
+    /// `-demoResetSession YES` — drop stored tokens before the phase is
+    /// decided, so the sign-in screen is reachable on a simulator that has
+    /// signed in before. The keychain survives a reinstall, so without this
+    /// the auth screen cannot be reached at all.
+    static var resetSession: Bool { d.bool(forKey: "demoResetSession") }
+
+    /// `-demoEmail a@b.c -demoPassword ...` — sign in on launch against the
+    /// real API. Not a fake phase override: a screenshot of a state the server
+    /// cannot actually produce is not evidence of anything.
+    static var credentials: (email: String, password: String)? {
+        guard let email = d.string(forKey: "demoEmail"),
+              let password = d.string(forKey: "demoPassword")
+        else { return nil }
+        return (email, password)
     }
 
-    /// `-demoNote n5`, or `-demoNote first` for whichever note leads the lane.
-    static var note: Note? {
-        guard let id = d.string(forKey: "demoNote") else { return nil }
-        let all = Fixtures.discover + Fixtures.following + Fixtures.nearby
-        if id == "first" { return all.first }
-        return all.first { $0.id == id }
-    }
+    /// `-demoQuestion "why does a derivative represent slope"` — open Ask with
+    /// the question already asked.
+    static var question: String? { d.string(forKey: "demoQuestion") }
 
-    static var publish: Bool { d.bool(forKey: "demoPublish") }
+    /// `-demoSearch photosynthesis` — open Explore with results on screen.
+    static var search: String? { d.string(forKey: "demoSearch") }
 
     /// Launch arguments live in UserDefaults for the whole process, so a
     /// `.task`-driven route re-fires every time its view reappears — i.e. on

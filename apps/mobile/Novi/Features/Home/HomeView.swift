@@ -1,178 +1,214 @@
 import SwiftUI
 
-enum HomeTab: Int, CaseIterable, Hashable {
-    case following, discover, nearby
-
-    var title: String {
-        switch self {
-        case .following: return "关注"
-        case .discover: return "发现"
-        case .nearby: return "同城"
-        }
-    }
-
-    var notes: [Note] {
-        switch self {
-        case .following: return Fixtures.following
-        case .discover: return Fixtures.discover
-        case .nearby: return Fixtures.nearby
-        }
-    }
-}
-
+/// The personalised feed.
+///
+/// Two columns of drawn covers, ranked server-side. The client does not
+/// re-sort: the order IS the ranking, and a card's "why this?" line comes from
+/// the same components that produced its position.
 struct HomeView: View {
     @ObservedObject var chrome: Chrome
+    var onAsk: (AskSeed) -> Void
 
-    @State private var tab: HomeTab = .discover
+    @EnvironmentObject private var session: AppSession
+    @StateObject private var model = FeedModel()
     @State private var path = NavigationPath()
-    @Namespace private var underline
 
     var body: some View {
         NavigationStack(path: $path) {
-            VStack(spacing: 0) {
-                TopBar(tab: $tab, underline: underline)
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: NV.Space.l) {
+                    greeting
 
-                // Paged, because the three lanes are swiped between in the
-                // real app and the underline has to be able to follow a
-                // half-finished drag. A switch statement cannot be dragged.
-                TabView(selection: $tab) {
-                    ForEach(HomeTab.allCases, id: \.self) { t in
-                        Feed(notes: t.notes, lane: t) { note in
-                            path.append(note)
-                        }
-                        .tag(t)
+                    if model.loading && model.items.isEmpty {
+                        skeleton
+                    } else if let error = model.error, model.items.isEmpty {
+                        NVErrorNote(message: error.message, retry: { Task { await model.reload() } })
+                            .padding(.horizontal, NV.gutter)
+                    } else if model.items.isEmpty {
+                        NVEmptyState(
+                            icon: "square.stack.3d.up",
+                            title: "Nothing here yet",
+                            message: "Add a few more subjects and your feed will fill up.",
+                            actionTitle: "Edit interests",
+                            action: {}
+                        )
+                        .padding(.top, NV.Space.section)
+                    } else {
+                        feed
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .padding(.bottom, 76)
             }
             .background(NV.page)
-            .navigationDestination(for: Note.self) { note in
-                NoteDetailView(note: note, chrome: chrome)
+            .scrollIndicators(.hidden)
+            .refreshable { await model.reload() }
+            .navigationDestination(for: ContentDTO.self) { content in
+                ContentDetailView(contentID: content.id, chrome: chrome, onAsk: onAsk)
             }
             .task {
-                Demo.once {
-                    if let lane = Demo.lane { tab = lane }
-                    if let note = Demo.note { path.append(note) }
-                }
+                model.attach(session)
+                await model.loadIfNeeded()
             }
         }
     }
-}
 
-// MARK: - The bar
+    private var greeting: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(timeOfDayGreeting)
+                .font(NV.small)
+                .foregroundStyle(NV.inkFaint)
+            Text("For You")
+                .font(NV.display)
+                .foregroundStyle(NV.ink)
+        }
+        .padding(.horizontal, NV.gutter + 4)
+        .padding(.top, NV.Space.s)
+    }
 
-private struct TopBar: View {
-    @Binding var tab: HomeTab
-    let underline: Namespace.ID
+    private var timeOfDayGreeting: String {
+        let name = session.user?.displayName ?? ""
+        let hour = Calendar.current.component(.hour, from: Date())
+        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
+        return name.isEmpty ? part : "\(part), \(name)"
+    }
 
-    var body: some View {
-        ZStack {
-            HStack {
-                Image(systemName: "bubble.left")
-                    .font(.system(size: 21, weight: .light))
-                    .foregroundStyle(NV.ink)
-                Spacer()
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .medium))
-                    .foregroundStyle(NV.ink)
+    private var feed: some View {
+        Waterfall(
+            items: model.items,
+            spacing: NV.gutter,
+            inset: NV.gutter,
+            estimatedHeight: { item, width in ContentCard.height(for: item, width: width) }
+        ) { item, _ in
+            ContentCard(
+                item: item,
+                onOpen: { path.append(item.content) },
+                onSave: { Task { await model.toggleSave(item) } }
+            )
+            .onAppear {
+                // Paging from the card itself rather than a footer sentinel:
+                // the sentinel only becomes visible after the user has already
+                // hit the bottom, which is one scroll too late.
+                Task { await model.loadMoreIfNeeded(after: item) }
             }
-            .padding(.horizontal, 18)
+        }
+    }
 
-            HStack(spacing: 20) {
-                ForEach(HomeTab.allCases, id: \.self) { t in
-                    TabItem(
-                        tab: t,
-                        selected: tab == t,
-                        badge: t == .following ? 11 : 0,
-                        underline: underline
-                    )
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.22)) { tab = t }
+    private var skeleton: some View {
+        HStack(alignment: .top, spacing: NV.gutter) {
+            ForEach(0..<2, id: \.self) { column in
+                VStack(spacing: NV.gutter) {
+                    ForEach(0..<3, id: \.self) { row in
+                        VStack(alignment: .leading, spacing: 8) {
+                            NVSkeleton(height: column == 0 ? (row == 1 ? 150 : 210) : (row == 1 ? 220 : 160))
+                            NVSkeleton(height: 12)
+                            NVSkeleton(height: 12, width: 90)
+                        }
+                        .padding(9)
+                        .cardSurface()
                     }
                 }
             }
         }
-        .frame(height: 44)
-        .background(NV.surface)
+        .padding(.horizontal, NV.gutter)
     }
 }
 
-private struct TabItem: View {
-    let tab: HomeTab
-    let selected: Bool
-    let badge: Int
-    let underline: Namespace.ID
+/// Feed state. A class rather than `@State` because paging, refresh and the
+/// optimistic save toggle all mutate the same list and have to stay ordered.
+@MainActor
+final class FeedModel: ObservableObject {
+    @Published private(set) var items: [FeedItemDTO] = []
+    @Published private(set) var loading = false
+    @Published private(set) var error: APIError?
 
-    var body: some View {
-        VStack(spacing: 4) {
-            Text(tab.title)
-                // Weight AND size change together. Weight alone is too quiet
-                // between 中文 glyphs, which have no ascenders to thicken.
-                .font(.system(size: selected ? 18 : 16, weight: selected ? .semibold : .regular))
-                .foregroundStyle(selected ? NV.ink : NV.inkFaint)
-                .overlay(alignment: .topTrailing) {
-                    if badge > 0 {
-                        Text("\(badge)")
-                            .font(.system(size: 9.5, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, badge > 9 ? 4 : 0)
-                            .frame(minWidth: 15, minHeight: 15)
-                            .background(NV.red, in: Capsule())
-                            .overlay(Capsule().stroke(.white, lineWidth: 1.5))
-                            .offset(x: 12, y: -9)
-                    }
-                }
+    private var session: AppSession?
+    private var offset = 0
+    private var hasMore = true
+    private var loaded = false
+    private let pageSize = 20
 
-            Group {
-                if selected {
-                    Capsule()
-                        .fill(NV.red)
-                        .matchedGeometryEffect(id: "home-underline", in: underline)
-                        .frame(width: 17, height: 3)
-                } else {
-                    Color.clear.frame(width: 17, height: 3)
-                }
-            }
+    func attach(_ session: AppSession) { self.session = session }
+
+    func loadIfNeeded() async {
+        guard !loaded else { return }
+        await reload()
+    }
+
+    func reload() async {
+        guard let session else { return }
+        loading = true
+        error = nil
+        offset = 0
+        hasMore = true
+        do {
+            let page: FeedResponseDTO = try await session.api.authed(
+                .get, "feed", query: ["limit": "\(pageSize)", "offset": "0"]
+            )
+            items = page.items
+            offset = page.items.count
+            hasMore = page.hasMore
+            loaded = true
+        } catch let e as APIError {
+            error = e
+        } catch {
+            self.error = APIError.transport(error)
         }
-        .frame(height: 34)
-        .contentShape(.rect)
+        loading = false
+    }
+
+    func loadMoreIfNeeded(after item: FeedItemDTO) async {
+        guard hasMore, !loading, let session else { return }
+        // Trigger three cards from the end, so the next page is usually there
+        // before the user reaches it.
+        guard let index = items.firstIndex(of: item), index >= items.count - 3 else { return }
+
+        loading = true
+        do {
+            let page: FeedResponseDTO = try await session.api.authed(
+                .get, "feed", query: ["limit": "\(pageSize)", "offset": "\(offset)"]
+            )
+            // The server excludes what has been seen, so a page can repeat an
+            // item the client already holds if a VIEW landed between requests.
+            let known = Set(items.map(\.id))
+            items += page.items.filter { !known.contains($0.id) }
+            offset += page.items.count
+            hasMore = page.hasMore
+        } catch {
+            // A failed page is not worth an error banner over a working feed;
+            // paging stops and a pull-to-refresh recovers it.
+            hasMore = false
+        }
+        loading = false
+    }
+
+    func toggleSave(_ item: FeedItemDTO) async {
+        guard let session, let index = items.firstIndex(of: item) else { return }
+        let wasSaved = item.isSaved
+        // Optimistic: the tap has to feel instant. Reverted below if the
+        // request fails, so the icon never lies for longer than the round trip.
+        items[index] = item.withSaved(!wasSaved)
+        do {
+            if wasSaved {
+                _ = try await session.api.authed(
+                    .delete, "content/\(item.content.id)/save", as: EmptyResponse.self
+                )
+            } else {
+                _ = try await session.api.authed(
+                    .post, "content/\(item.content.id)/save",
+                    body: EmptyBody(), as: EmptyResponse.self
+                )
+            }
+        } catch {
+            items[index] = item.withSaved(wasSaved)
+        }
     }
 }
 
-// MARK: - The feed
-
-private struct Feed: View {
-    let notes: [Note]
-    let lane: HomeTab
-    let open: (Note) -> Void
-
-    @State private var refreshed = false
-
-    var body: some View {
-        ScrollView {
-            Waterfall(
-                items: notes,
-                estimatedHeight: { note, w in NoteCard.height(note, width: w) }
-            ) { note, w in
-                NoteCard(note: note, width: w) { open(note) }
-            }
-            .padding(.horizontal, NV.gutter)
-            .padding(.top, NV.gutter)
-
-            Text("- 到底啦 -")
-                .font(.system(size: 12))
-                .foregroundStyle(NV.inkGhost)
-                .frame(maxWidth: .infinity)
-                .padding(.top, 22)
-                // Clears the tab bar. The bar is opaque and sits on top of the
-                // scroll view, so the last row would otherwise end underneath it.
-                .padding(.bottom, 96)
-        }
-        .scrollIndicators(.hidden)
-        .refreshable {
-            try? await Task.sleep(nanoseconds: 700_000_000)
-            refreshed = true
-        }
-        .background(NV.page)
+extension FeedItemDTO {
+    /// The DTO is immutable by design (the server owns these fields), so an
+    /// optimistic update rebuilds it rather than mutating in place.
+    func withSaved(_ saved: Bool) -> FeedItemDTO {
+        FeedItemDTO(content: content, score: score, reason: reason,
+                    isSaved: saved, isLiked: isLiked)
     }
 }

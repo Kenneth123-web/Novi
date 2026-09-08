@@ -1,7 +1,7 @@
 import SwiftUI
 
-/// A row that wraps. Tags, chips and interest pills all need one, and SwiftUI
-/// ships nothing that does it — `LazyVGrid` gives every item the same column
+/// A row that wraps. Tags, chips and concept pills all need one, and SwiftUI
+/// ships nothing that does it: `LazyVGrid` gives every item the same column
 /// width, which turns a row of variable-length words into a ragged table.
 struct FlowRow: Layout {
     var spacing: CGFloat = 8

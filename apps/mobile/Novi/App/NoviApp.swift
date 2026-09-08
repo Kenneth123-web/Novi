@@ -2,14 +2,16 @@ import SwiftUI
 
 @main
 struct NoviApp: App {
+    @StateObject private var session = AppSession()
+
     var body: some Scene {
         WindowGroup {
             RootView()
-                // The reproduction is of the light app. A dark variant is a
-                // second palette to keep honest, and there is nothing to check
-                // it against yet.
+                .environmentObject(session)
+                // Light only for now. A dark variant is a second palette to
+                // keep honest, and every screen would need checking against it.
                 .preferredColorScheme(.light)
-                .tint(NV.red)
+                .tint(NV.accent)
         }
     }
 }

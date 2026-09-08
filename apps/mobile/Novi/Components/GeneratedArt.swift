@@ -2,17 +2,15 @@ import SwiftUI
 
 /// Covers and avatars are DRAWN, not fetched.
 ///
-/// A clone of a photo feed has no photographs behind it, and the two honest
-/// ways to fill that hole are a grey rectangle or a generated one. A grey
-/// rectangle reads as a broken image — which is exactly what the reference
-/// screenshot caught the real app doing mid-load — and a feed of them says
-/// nothing about the layout, which is the thing being reproduced. So each
-/// cover is a deterministic function of the note's id: the same note draws the
-/// same picture on every launch and on every device, which is what lets the
-/// masonry be read as a stable grid rather than as noise.
+/// The content store holds no images yet, and the two honest ways to fill that
+/// hole are a grey rectangle or a generated one. A grey rectangle reads as a
+/// broken image, and a screen full of them says nothing about whether the
+/// layout works. So every cover is a deterministic function of the item's id:
+/// the same item draws the same picture on every launch and every device,
+/// which is what lets the masonry read as a stable grid rather than as noise.
 ///
-/// Nothing here calls `Date()` or `random()`. Both would re-roll on every
-/// scroll frame.
+/// Nothing here calls `Date()` or `random()`. Either would re-roll the picture
+/// on every scroll frame.
 struct Seeded {
     private var state: UInt64
 

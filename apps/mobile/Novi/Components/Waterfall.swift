@@ -13,18 +13,24 @@ struct Waterfall<Item: Identifiable & Hashable, Content: View>: View {
     let items: [Item]
     var columns: Int = 2
     var spacing: CGFloat = NV.gutter
+    /// The grid applies its own horizontal inset rather than being wrapped in
+    /// one by the caller. It has to know the true available width to size a
+    /// column, and padding applied outside is invisible to it — the columns
+    /// then come out one inset too wide and the right one runs off screen.
+    var inset: CGFloat = 0
     var estimatedHeight: (Item, CGFloat) -> CGFloat
     @ViewBuilder var content: (Item, CGFloat) -> Content
 
     @State private var width: CGFloat = UIScreen.main.bounds.width
 
     private var columnWidth: CGFloat {
-        max(1, (width - spacing * CGFloat(columns - 1)) / CGFloat(columns))
+        let usable = width - inset * 2 - spacing * CGFloat(columns - 1)
+        return max(1, usable / CGFloat(columns))
     }
 
-    /// Greedy shortest-column packing, in feed order. Anything cleverer
-    /// (balancing the tails) reorders the feed, and the feed's order is the
-    /// ranking — it is not ours to rearrange for a tidier bottom edge.
+    /// Greedy shortest-column packing, in feed order. Anything cleverer —
+    /// balancing the tails, say — reorders the feed, and the feed's order IS
+    /// the ranking. It is not ours to rearrange for a tidier bottom edge.
     private var buckets: [[Item]] {
         var out = Array(repeating: [Item](), count: columns)
         var heights = Array(repeating: CGFloat(0), count: columns)
@@ -49,6 +55,11 @@ struct Waterfall<Item: Identifiable & Hashable, Content: View>: View {
                 .frame(width: columnWidth)
             }
         }
+        .padding(.horizontal, inset)
+        // Measured on a full-width backdrop, not on the columns themselves:
+        // the columns are sized FROM `width`, so measuring them would just
+        // report back whatever was already assumed and never converge.
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             GeometryReader { g in
                 Color.clear.preference(key: WaterfallWidth.self, value: g.size.width)

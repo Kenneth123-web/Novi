@@ -1,177 +1,228 @@
 import SwiftUI
 
-/// 我. A banner, the identity block, the three counts, then the same waterfall
-/// again under 笔记 / 收藏 / 赞过.
-///
-/// The counts are printed with their labels below rather than beside, because
-/// "获赞与收藏" is five characters and no inline label row survives that at any
-/// width worth having.
+/// Profile: who you are, what you saved, what you've been doing, and the one
+/// setting that matters — the interests the feed is built from.
 struct ProfileView: View {
-    private let me = Fixtures.me
-    @State private var tab = 0
-    private let tabs = ["笔记", "收藏", "赞过"]
-
-    private var notes: [Note] {
-        switch tab {
-        case 1: return Array(Fixtures.discover.prefix(6))
-        case 2: return Array(Fixtures.nearby.prefix(4))
-        default: return Array(Fixtures.following.prefix(5))
-        }
-    }
+    @EnvironmentObject private var session: AppSession
+    @State private var saved: [ContentDTO] = []
+    @State private var history: [HistoryDayDTO] = []
+    @State private var editingInterests = false
+    @State private var path = NavigationPath()
+    @StateObject private var chrome = Chrome()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                banner
-                VStack(spacing: 0) {
-                    identity
-                    stats
-                    actions
+        NavigationStack(path: $path) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: NV.Space.xl) {
+                    header
+                    if !history.isEmpty { activity }
+                    interests
+                    savedSection
+                    signOut
+                    Spacer(minLength: 90)
                 }
-                .background(NV.surface)
-                lane
-                grid
+                .padding(.horizontal, NV.Space.l)
+                .padding(.top, NV.Space.s)
             }
+            .background(NV.page)
+            .scrollIndicators(.hidden)
+            .refreshable { await load() }
+            .navigationTitle("Profile")
+            .navigationDestination(for: ContentDTO.self) { content in
+                ContentDetailView(contentID: content.id, chrome: chrome, onAsk: { _ in })
+            }
+            .sheet(isPresented: $editingInterests) { InterestEditor() }
+            .task { await load() }
         }
-        .scrollIndicators(.hidden)
-        .background(NV.page)
-        .ignoresSafeArea(edges: .top)
     }
 
-    private var banner: some View {
-        CoverArt(seed: "banner-" + me.id)
-            .frame(height: 190)
-            .clipped()
-            .overlay(alignment: .top) {
-                LinearGradient(colors: [.black.opacity(0.18), .clear],
-                               startPoint: .top, endPoint: .bottom)
-                    .frame(height: 90)
-            }
-            .overlay(alignment: .topTrailing) {
-                HStack(spacing: 18) {
-                    Image(systemName: "line.3.horizontal")
-                    Image(systemName: "gearshape")
+    private var header: some View {
+        HStack(spacing: NV.Space.m) {
+            Avatar(name: session.user?.avatarSeed ?? "novi", size: 60)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.user?.displayName ?? "")
+                    .font(NV.h2).foregroundStyle(NV.ink)
+                Text("@\(session.user?.username ?? "")")
+                    .font(NV.small).foregroundStyle(NV.inkFaint)
+                if let profile = session.profile {
+                    HStack(spacing: 5) {
+                        if let stage = profile.stage {
+                            NVTag(text: stageLabel(stage), tint: NV.accent)
+                        }
+                        if let curriculum = profile.curriculum {
+                            NVTag(text: curriculum, tint: NV.inkFaint)
+                        }
+                    }
+                    .padding(.top, 3)
                 }
-                .font(.system(size: 19, weight: .light))
-                .foregroundStyle(.white)
-                .padding(.trailing, 18)
-                .padding(.top, 58)
             }
-    }
-
-    private var identity: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Avatar(name: me.name, size: 76)
-                .overlay(Circle().stroke(.white, lineWidth: 3))
-                .offset(y: -34)
-                .padding(.bottom, -34)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(me.name)
-                    .font(.system(size: 19, weight: .semibold))
-                    .foregroundStyle(NV.ink)
-                Text("Novi 号：" + me.noviID)
-                    .font(.system(size: 12))
-                    .foregroundStyle(NV.inkFaint)
-            }
-            .padding(.top, 4)
-
-            Spacer()
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 10)
-    }
-
-    private var stats: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(me.bio.isEmpty ? "还没有简介" : me.bio)
-                .font(.system(size: 13.5))
-                .foregroundStyle(NV.inkSoft)
-                .fixedSize(horizontal: false, vertical: true)
-
-            HStack(spacing: 26) {
-                count(me.following, "关注")
-                count(me.followers, "粉丝")
-                count(me.liked, "获赞与收藏")
-                Spacer()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-    }
-
-    private func count(_ n: Int, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(nv_count(n))
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(NV.ink)
-                .monospacedDigit()
-            Text(label)
-                .font(.system(size: 11.5))
-                .foregroundStyle(NV.inkFaint)
+            Spacer(minLength: 0)
         }
     }
 
-    private var actions: some View {
-        HStack(spacing: 10) {
-            Text("编辑资料")
-                .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(NV.ink)
-                .frame(maxWidth: .infinity)
-                .frame(height: 32)
-                .background(Capsule().stroke(NV.hairline, lineWidth: 1))
-
-            Text("分享")
-                .font(.system(size: 13.5, weight: .medium))
-                .foregroundStyle(NV.ink)
-                .frame(maxWidth: .infinity)
-                .frame(height: 32)
-                .background(Capsule().stroke(NV.hairline, lineWidth: 1))
-
-            Image(systemName: "person.badge.plus")
-                .font(.system(size: 14))
-                .foregroundStyle(NV.ink)
-                .frame(width: 46, height: 32)
-                .background(Capsule().stroke(NV.hairline, lineWidth: 1))
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 18)
-        .padding(.bottom, 16)
+    private func stageLabel(_ stage: String) -> String {
+        ["middle": "Middle school", "high": "High school",
+         "college": "College", "other": "Self-directed"][stage] ?? stage
     }
 
-    private var lane: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(tabs.enumerated()), id: \.offset) { i, name in
-                VStack(spacing: 5) {
-                    Text(name)
-                        .font(.system(size: 14.5, weight: i == tab ? .semibold : .regular))
-                        .foregroundStyle(i == tab ? NV.ink : NV.inkFaint)
-                    Capsule()
-                        .fill(i == tab ? NV.ink : .clear)
-                        .frame(width: 18, height: 2.5)
+    /// Fourteen days of activity as a small bar chart. Bars are relative to
+    /// the busiest day, so a quiet week still shows shape rather than looking
+    /// like a flat line.
+    private var activity: some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(title: "Recent activity")
+            let peak = max(1, history.map { $0.content + $0.questions + $0.quizzes }.max() ?? 1)
+            HStack(alignment: .bottom, spacing: 5) {
+                ForEach(history.reversed()) { day in
+                    let total = day.content + day.questions + day.quizzes
+                    VStack(spacing: 4) {
+                        RoundedRectangle(cornerRadius: 3, style: .continuous)
+                            .fill(total > 0 ? NV.accent : NV.track)
+                            .frame(height: max(4, CGFloat(total) / CGFloat(peak) * 56))
+                        Text(dayLabel(day.date))
+                            .font(.system(size: 8))
+                            .foregroundStyle(NV.inkGhost)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
-                .contentShape(.rect)
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.18)) { tab = i }
+            }
+            .frame(height: 74, alignment: .bottom)
+            .padding(NV.Space.m)
+            .frame(maxWidth: .infinity)
+            .cardSurface()
+        }
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "d"
+        return f.string(from: date)
+    }
+
+    private var interests: some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(
+                title: "Customise my feed",
+                subtitle: "What you pick here is what you see",
+                action: ("Edit", { editingInterests = true })
+            )
+            if let profile = session.profile, !profile.subjectOrder.isEmpty {
+                FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                    ForEach(profile.subjectOrder, id: \.self) { slug in
+                        let name = session.subjects.first { $0.slug == slug }?.name ?? slug
+                        let weight = profile.subjectInterests[slug] ?? 0
+                        HStack(spacing: 5) {
+                            Text(name).font(NV.small.weight(.medium))
+                            // The live interest weight. Showing the number the
+                            // ranker actually uses is the difference between a
+                            // setting and a black box.
+                            Text("\(Int(weight * 100))")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(NV.accent)
+                        }
+                        .foregroundStyle(NV.ink)
+                        .padding(.horizontal, NV.Space.m)
+                        .padding(.vertical, 9)
+                        .cardSurface(NV.Radius.chip)
+                    }
                 }
             }
         }
-        .padding(.vertical, 10)
-        .background(NV.surface)
-        .hairline()
     }
 
-    private var grid: some View {
-        Waterfall(
-            items: notes,
-            estimatedHeight: { note, w in NoteCard.height(note, width: w) }
-        ) { note, w in
-            NoteCard(note: note, width: w)
+    private var savedSection: some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(title: "Saved", subtitle: saved.isEmpty ? nil : "\(saved.count) items")
+            if saved.isEmpty {
+                NVEmptyState(
+                    icon: "bookmark",
+                    title: "Nothing saved yet",
+                    message: "Tap the bookmark on anything you want to come back to."
+                )
+                .padding(.vertical, NV.Space.l)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: NV.Space.m) {
+                        ForEach(saved) { item in
+                            NavigationLink(value: item) {
+                                RailCard(content: item, onOpen: {}).allowsHitTesting(false)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
+            }
         }
-        .padding(.horizontal, NV.gutter)
-        .padding(.top, NV.gutter)
-        .padding(.bottom, 96)
+    }
+
+    private var signOut: some View {
+        NVButton(title: "Sign out", kind: .secondary) {
+            Task { await session.signOut() }
+        }
+    }
+
+    private func load() async {
+        await session.loadSubjects()
+        try? await session.loadMe()
+        saved = (try? await session.api.authed(.get, "saved", as: [ContentDTO].self)) ?? []
+        history = (try? await session.api.authed(
+            .get, "me/history", query: ["days": "14"], as: [HistoryDayDTO].self
+        )) ?? []
+    }
+}
+
+/// Re-picking subjects. Existing weights survive: a subject the learner has
+/// actually engaged with should not be reset to its questionnaire default just
+/// because they opened this sheet.
+private struct InterestEditor: View {
+    @EnvironmentObject private var session: AppSession
+    @Environment(\.dismiss) private var dismiss
+    @State private var selected: [String] = []
+    @State private var busy = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: NV.Space.m) {
+                    Text("Tap order sets priority. The first subject leads your feed.")
+                        .font(NV.small).foregroundStyle(NV.inkFaint)
+                    FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                        ForEach(session.subjects) { subject in
+                            let rank = selected.firstIndex(of: subject.slug)
+                            NVChip(
+                                text: rank == nil ? subject.name : "\(rank! + 1). \(subject.name)",
+                                selected: rank != nil
+                            ) {
+                                if let rank { selected.remove(at: rank) }
+                                else { selected.append(subject.slug) }
+                            }
+                        }
+                    }
+                }
+                .padding(NV.Space.l)
+            }
+            .background(NV.page)
+            .navigationTitle("My interests")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Save") { save() }
+                        .disabled(selected.isEmpty || busy)
+                        .fontWeight(.semibold)
+                }
+            }
+            .task { selected = session.profile?.subjectOrder ?? [] }
+        }
+    }
+
+    private func save() {
+        busy = true
+        Task {
+            try? await session.updateProfile(ProfilePatchBody(subjectSlugs: selected))
+            busy = false
+            dismiss()
+        }
     }
 }

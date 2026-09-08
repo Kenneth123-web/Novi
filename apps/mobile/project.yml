@@ -12,7 +12,7 @@ configFiles:
 settings:
   base:
     SWIFT_VERSION: "5.0"
-    DEVELOPMENT_LANGUAGE: zh-Hans
+    DEVELOPMENT_LANGUAGE: en
 
 targets:
   Novi:
@@ -20,18 +20,36 @@ targets:
     platform: iOS
     sources:
       - path: Novi
+    # An explicit Info.plist rather than GENERATE_INFOPLIST_FILE: the generated
+    # one is driven by INFOPLIST_KEY_* build settings, which are flat strings,
+    # and there is no INFOPLIST_KEY_ spelling for NSAppTransportSecurity. The
+    # API runs over plain HTTP on localhost in development. xcodegen writes this
+    # file, so it stays gitignored and is regenerated with the project.
+    info:
+      path: Novi/Info.plist
+      properties:
+        CFBundleDisplayName: Novi
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UIStatusBarStyle: UIStatusBarStyleDefault
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIUserInterfaceStyle: Light
+        # Loopback only. A blanket NSAllowsArbitraryLoads would ship as "this
+        # app accepts any plaintext HTTP", which is both a review question and
+        # untrue: every other host it talks to is HTTPS.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            localhost:
+              NSExceptionAllowsInsecureHTTPLoads: true
+            127.0.0.1:
+              NSExceptionAllowsInsecureHTTPLoads: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: luke.novi.app
         PRODUCT_NAME: Novi
-        INFOPLIST_KEY_CFBundleDisplayName: Novi
-        INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
-        INFOPLIST_KEY_UIStatusBarStyle: UIStatusBarStyleDefault
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_UIUserInterfaceStyle: Light
         TARGETED_DEVICE_FAMILY: "1"
-        GENERATE_INFOPLIST_FILE: YES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
 
         # Signing. A device build MUST be signed — an unsigned .app installs
@@ -45,8 +63,13 @@ targets:
         # to sign, and installd rejects the bundle.
         CODE_SIGN_STYLE: Automatic
         "CODE_SIGN_IDENTITY[sdk=iphoneos*]": Apple Development
-        "CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]": NO
-        "CODE_SIGNING_REQUIRED[sdk=iphonesimulator*]": NO
+        # Ad-hoc for the simulator, NOT unsigned. An unsigned app has no
+        # entitlements at all, so it has no keychain access group, and every
+        # SecItemAdd fails with errSecMissingEntitlement — which showed up as
+        # "sign in again" on every launch. Ad-hoc ("-") needs no team and no
+        # provisioning profile, so a machine that has never seen this project's
+        # signing can still build and run it.
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
         # DEVELOPMENT_TEAM comes from Configs/Local.xcconfig, which is
         # gitignored — a team id is per-person, and a device build under
         # somebody else's Apple ID cannot register this bundle id anyway.
