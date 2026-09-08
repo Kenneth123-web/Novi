@@ -1,113 +1,150 @@
 # Novi
 
-小红书主界面的 SwiftUI 复刻。iOS 17+，纯前端，没有网络请求。
+An AI social learning app. A personalised feed of educational content, a tutor
+that explains what you're stuck on, and a passport that records what you
+actually learned.
+
+One client — a SwiftUI iOS app — on a FastAPI backend with PostgreSQL.
+
+The loop the product is built around:
 
 ```
-ios/
-├── project.yml                 xcodegen 工程定义
-└── Novi/
-    ├── App/                    入口、根 TabView、自绘底栏、demo 启动参数
-    ├── Design/NV.swift         全部颜色 / 间距 / 字号
-    ├── Model/                  数据结构 + 全部假数据
-    ├── Components/             瀑布流、自动换行 Layout、程序化生成的图
-    └── Features/               首页 · 笔记详情 · 市集 · 消息 · 我 · 发布
+feed → open something → "I have a question" → explanation
+     → watch / read / discuss → quiz → concept learned → passport
+     → better feed
 ```
 
-## 跑起来
+```
+apps/mobile/       SwiftUI client (iOS 17+)
+services/api/      FastAPI — the only thing that talks to the database or to Gemini
+database/          Migrations and seed data
+docs/              Architecture, database, API
+scripts/dev.sh     Every command below, in one place
+```
+
+## Run it
+
+Needs `uv`, `xcodegen`, Xcode, and PostgreSQL 17:
 
 ```bash
-brew install xcodegen                     # 只需一次
-cd ios && xcodegen generate
-xcodebuild -project Novi.xcodeproj -scheme Novi \
-  -sdk iphonesimulator \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
-  -derivedDataPath /tmp/novi-dd build
+brew install postgresql@17 xcodegen uv
+brew services start postgresql@17
 ```
 
-`xcodegen` 是必需的：工程用显式文件引用，新加的 `.swift` 在重新 generate 之前
-对构建是不存在的。**改签名、bundle id、Info.plist 请改 `project.yml`，不要在
-Xcode 里改** —— 下一次 generate 会把 Xcode 里的改动覆盖掉。
-
-## 真机
+Then:
 
 ```bash
-cp ios/Configs/Local.xcconfig.example ios/Configs/Local.xcconfig   # 填自己的 Team ID
-cd ios && xcodegen generate
-xcodebuild -project Novi.xcodeproj -scheme Novi -sdk iphoneos \
-  -destination 'id=<device udid>' -derivedDataPath /tmp/novi-dd \
-  -allowProvisioningUpdates build
+./scripts/dev.sh setup     # venv, database, migrations, seed data
+./scripts/dev.sh api       # API on :8000
+./scripts/dev.sh ios       # regenerate the Xcode project and build
 ```
 
-两件都是踩过的坑：
+`setup` writes a `.env` from `.env.example`. Put your gateway key in it:
 
-**`DerivedData` 不能放在这个工程目录里。** 仓库在 iCloud 同步的 Documents 下，
-文件同步会给产物打上 `com.apple.FinderInfo` 和 `com.apple.fileprovider.*` 扩展
-属性，codesign 直接拒签：`resource fork, Finder information, or similar detritus
-not allowed`。所以 `-derivedDataPath` 指到同步范围外（Xcode 自己的默认位置
-`~/Library/Developer/Xcode/DerivedData` 本来就在外面，所以从 Xcode 里跑没这个
-问题）。
+```
+AI_API_KEY=sk-...
+AI_BASE_URL=https://1pkapi.com/v1
+AI_MODEL=gemini-3.5-flash
+```
 
-**关签名只能针对模拟器。** `project.yml` 里是
-`CODE_SIGNING_ALLOWED[sdk=iphonesimulator*]` 而不是无条件的
-`CODE_SIGNING_ALLOWED: NO` —— 后者会让自动签名正常配好描述文件、然后不签，
-装机时报 `The executable is not codesigned`。模拟器不需要签名也不需要 team，
-这样一台没见过本工程描述文件的机器仍然能跑模拟器构建。
+**The key never reaches the client.** The app calls `POST /v1/ask` and the API
+calls Gemini. A key in an app bundle is a key anyone with the bundle can
+extract. `.env` is gitignored; nothing in `apps/mobile` reads it.
 
-Team ID 在 `ios/Configs/Local.xcconfig`（gitignored）。`luke.novi.app` 是显式
-App ID，全局唯一，换个 Apple ID 装机就要在同一个文件里改 `PRODUCT_BUNDLE_IDENTIFIER`。
+The simulator shares the host's loopback, so the app finds the API at
+`127.0.0.1:8000` with no configuration. A device build needs the host's LAN
+address — pass `-apiBaseURL http://192.168.x.x:8000/v1`.
 
-## demo 启动参数
+## Checks
 
-`simctl` 能启动和截图，但不能点。所以每一屏都能用启动参数直达 —— 否则藏在三次
-点击后面的界面就没人真正看过。
+```bash
+./scripts/dev.sh check     # ruff + pytest + migration parity
+```
+
+Tests run against a real Postgres (`novi_test`), not SQLite: the schema uses
+JSONB, arrays, a generated tsvector column and Postgres full-text search, and a
+suite that passes on a database the product never runs on proves very little.
+The test schema is built by running the *migrations*, so a migration that does
+not apply fails the test run rather than the deploy.
+
+## What is real and what is a stand-in
+
+**The content store is seeded with generated placeholders.** Every row is
+written `is_sample = true` and the client draws a "Sample" marker on it. Creator
+handles are invented and generic, and no URLs are fabricated — a plausible
+bilibili link that 404s invites a tap, and a post credited to a real account
+would be a fake record about a real party. Replace `database/seeds/content.py`
+with a real ingestion pipeline and the flag goes away on its own.
+
+**Cover images are drawn, not fetched.** There are no photographs behind this
+feed, and a grid of grey rectangles reads as a broken image rather than as a
+layout. Each cover is a deterministic function of the item's id, so the same
+item draws the same picture on every launch and the masonry is a stable grid
+instead of noise. See `Components/GeneratedArt.swift`.
+
+**Live AI depends on the gateway having capacity.** At the time of writing,
+`1pkapi.com` returns `"All available accounts exhausted"` for every model on
+this key. That is handled, not hidden: the API maps it to a structured
+`AI_UNAVAILABLE`, and the app shows a "tutor is offline" state and stays fully
+usable. Ask, quizzes, translation and thread summaries all start working the
+moment the account has capacity — nothing else needs to change.
+
+## iOS build notes
+
+All three of these are scars.
+
+**`xcodegen` is required.** The project uses explicit file references, so a new
+`.swift` file does not exist to the build until the project is regenerated.
+Change signing, bundle id or Info.plist keys in `apps/mobile/project.yml`, not
+in Xcode — the next `generate` overwrites anything set in the IDE.
+
+**`DerivedData` must stay outside the repo.** This checkout lives under an
+iCloud-synced `Documents`; the sync daemon puts `com.apple.FinderInfo` and
+`com.apple.fileprovider.*` extended attributes on build products, and codesign
+refuses them: `resource fork, Finder information, or similar detritus not
+allowed`. `scripts/dev.sh ios` points `-derivedDataPath` at `/tmp`.
+
+**The simulator build is ad-hoc signed, not unsigned.** An unsigned app has no
+entitlements at all, so it has no keychain access group and every `SecItemAdd`
+fails with `errSecMissingEntitlement`. That showed up as the app asking you to
+sign in again on every launch, with nothing anywhere saying why. Ad-hoc (`"-"`)
+needs no team and no provisioning profile, so a machine that has never seen
+this project's signing can still build and run it. Device builds still need a
+Team ID in `apps/mobile/Configs/Local.xcconfig` (gitignored).
+
+## Demo launch arguments
+
+`simctl` can launch and screenshot but cannot tap, so every screen is reachable
+by argument. Without this, anything three taps deep is a screen nobody has
+actually looked at.
 
 ```bash
 xcrun simctl launch <UDID> luke.novi.app \
-  -demoTab market|messages|me       # 直接打开某个底栏 tab
-  -demoLane following|nearby        # 首页停在 关注 / 同城
-  -demoNote n5                      # 直接推进某条笔记详情（first = 第一条）
-  -demoPublish YES                  # 打开发布面板
+  -demoResetSession YES                        # forget stored tokens → sign-in
+  -demoEmail a@example.com -demoPassword ...   # sign in on launch, for real
+  -demoTab home|explore|ask|passport|profile
+  -demoQuestion "why does a derivative represent slope"
+  -demoSearch photosynthesis
+  -apiBaseURL http://host:8000/v1
 ```
 
-## 几个不是随手写的决定
+`-demoEmail` signs in against the real API rather than faking a signed-in
+state. A screenshot of a state the server cannot produce is not evidence of
+anything.
 
-**封面图是画出来的，不是拉下来的。** 一个照片流的复刻背后没有照片，诚实的选项
-只有灰方块和生成图。灰方块读起来就是加载失败 —— 参考截图里真实的小红书正好卡在
-那个状态 —— 而且一整屏灰方块说明不了任何布局问题。每张封面是笔记 id 的确定性
-函数：同一条笔记在任何设备任何一次启动都画出同一张图，瀑布流才是稳定的网格而不是
-噪声。`GeneratedArt.swift` 里没有 `Date()` 也没有 `random()`，否则每一帧滚动都会
-重掷一次。
+## Where the decisions are written down
 
-**瀑布流不是 `LazyVGrid`。** grid 会对齐行，矮卡片挨着高卡片就留一道空，封面不再
-齐平。瀑布流没有"行"，每列各自堆叠，下一张去墨最少的那列 —— 代价是布局必须在放置
-之前就知道卡片会有多高，所以 `Waterfall` 要调用方给高度估算，而不是自己量。量完再
-调整会让卡片在滚动中换列。
+Backend and schema: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md),
+[`docs/DATABASE.md`](docs/DATABASE.md). HTTP contract:
+[`docs/API.md`](docs/API.md). Client-side reasoning lives next to the code it
+explains — start at [`Design/NV.swift`](apps/mobile/Novi/Design/NV.swift),
+[`Components/Waterfall.swift`](apps/mobile/Novi/Components/Waterfall.swift) and
+[`Core/APIClient.swift`](apps/mobile/Novi/Core/APIClient.swift).
 
-**估算里的标题行数用 `boundingRect`，不是按字数除宽度。** 「无 SSN F-1 签证被批准
-了 6000usd 额度」这种中英数混排没有单一字宽，估错一行就是列里一道看得见的台阶。
+## What is not built
 
-**`NoteCard.height` 必须和 body 对得上。** 量得比画得高，列里留空；矮了，两列会
-错开。改动其中一个就要改另一个。
-
-**红色只有一个位置能出现**：选中态下划线、发布按钮、角标、点亮的心。加第二个强调色，
-整个"一片中性里一点红"的观感就没了。
-
-**底栏是文字不是图标。** 这是这条 bar 最容易认出来的地方，也是真决定而不是省事：
-五个图标要学，五个词是读。代价是这条 bar 没法再压缩，所以发布键是上面唯一的形状。
-
-**`RootView` 不订阅任何会在导航过程中变化的东西。** 底栏的显隐标记放在单独的
-`Chrome` 对象上，`RootView` 用 `@State` 持有（引用类型走 `@State` 只存不订阅），
-只有 `TabBar` 用 `@ObservedObject` 观察它。根视图 body 一旦重跑，嵌套导航栈里
-已经推进去的页面会被拆掉。
-
-**不透明度为 0 的视图照样接触摸**，不是 UIKit 的 `alpha: 0`。底栏隐藏时同时给了
-`allowsHitTesting(false)`。
-
-**发布面板明说没接后端。** 一个看起来会动、实际什么都不做的控件，会让人怀疑屏幕
-上其余部分也是假的。
-
-## 还没做
-
-- 搜索、笔记的作者主页、聊天详情页都还是入口没有页面
-- 个人页的 笔记/收藏/赞过 切换没有吸顶
-- 全部内容是假数据，没有任何网络层
+No streaming responses, no real ingestion pipeline, no admin dashboard, and no
+client-side test target — the backend has 39 tests, the app has none. Projects
+exist in the API and the schema but have no screen yet. Dark mode is not
+implemented; the app is light-only and says so rather than shipping a second
+palette nobody has checked.
