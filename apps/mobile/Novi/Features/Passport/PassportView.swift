@@ -14,10 +14,19 @@ struct PassportView: View {
     @State private var error: APIError?
     @State private var path = NavigationPath()
     @State private var quizConcept: QuizTarget?
+    @State private var poster: PosterImage?
+    @State private var rendering = false
 
     private struct QuizTarget: Identifiable {
         let id: UUID
         let name: String
+    }
+
+    /// `ShareLink` needs something `Identifiable` to drive a sheet, and a bare
+    /// `UIImage` is not.
+    private struct PosterImage: Identifiable {
+        let id = UUID()
+        let image: UIImage
     }
 
     var body: some View {
@@ -53,6 +62,24 @@ struct PassportView: View {
             .scrollIndicators(.hidden)
             .refreshable { await load() }
             .navigationTitle("Passport")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        makePoster()
+                    } label: {
+                        if rendering {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "square.and.arrow.up")
+                                .foregroundStyle(NV.ink)
+                        }
+                    }
+                    .disabled(passport == nil || rendering)
+                }
+            }
+            .sheet(item: $poster) { item in
+                ShareSheet(items: [item.image])
+            }
             .navigationDestination(for: RelatedConceptDTO.self) { concept in
                 ConceptView(conceptID: concept.conceptID, fallbackName: concept.name,
                             chrome: chrome, onAsk: onAsk)
@@ -79,7 +106,7 @@ struct PassportView: View {
                     .tracking(2.0)
                     .foregroundStyle(.white.opacity(0.52))
                 Text(session.user?.displayName ?? "")
-                    .displayStyle(27)
+                    .displayStyle(8)
                     .foregroundStyle(.white)
             }
 
@@ -132,7 +159,7 @@ struct PassportView: View {
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
             Text(value)
-                .font(NV.font(23, .semibold))
+                .font(NV.step(5, .semibold))
                 .foregroundStyle(.white)
             Text(label)
                 .font(.system(size: 9.5, weight: .semibold))
@@ -248,6 +275,24 @@ struct PassportView: View {
             NVSkeleton(height: 16, width: 120)
             NVSkeleton(height: 96)
             NVSkeleton(height: 140)
+        }
+    }
+
+    /// Renders on a detached task hop so the button's spinner actually paints
+    /// before the render begins. `ImageRenderer` is synchronous and main-actor
+    /// only, so without yielding first the UI freezes on the tap and the
+    /// spinner is never seen.
+    private func makePoster() {
+        guard let passport, !rendering else { return }
+        rendering = true
+        Task {
+            await Task.yield()
+            let image = PassportPosterRenderer.render(
+                passport: passport,
+                name: session.user?.displayName ?? "Novi learner"
+            )
+            rendering = false
+            if let image { poster = PosterImage(image: image) }
         }
     }
 

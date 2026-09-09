@@ -44,8 +44,21 @@ Then:
 ```
 AI_API_KEY=sk-...
 AI_BASE_URL=https://1pkapi.com/v1
-AI_MODEL=gemini-3.5-flash
+AI_PROTOCOL=anthropic
+AI_MODEL=claude-haiku-4-5
 ```
+
+`AI_PROTOCOL=anthropic` sends `POST /v1/messages` with `x-api-key` — the shape
+`@ai-sdk/anthropic` uses. Set it to `openai` for a gateway that only speaks
+`/v1/chat/completions`. Against 1pkapi the native endpoint is measurably
+healthier: it answers in ~38s with a structured, transient `rate_limit_error`
+where the OpenAI path hangs for 240s.
+
+`AI_MODEL` names the model you *want*. If the gateway will not serve it the
+request walks `AI_MODEL_FALLBACKS` and uses the first one that is served,
+remembering the refusal so the chain costs one wasted call rather than one per
+request. That is why Haiku is the default even though this gateway does not
+carry it yet.
 
 **The key never reaches the client.** The app calls `POST /v1/ask` and the API
 calls Gemini. A key in an app bundle is a key anyone with the bundle can
@@ -59,8 +72,21 @@ address — pass `-apiBaseURL http://192.168.x.x:8000/v1`.
 
 The visual system is ported from the Travelers app's: a long neutral ink
 scale carries the hierarchy, the page is a near-white that is not the card
-white, radii are generous (28pt hero, 20pt card), and Instrument Sans (SIL
-Open Font License) is bundled rather than left to the system face.
+white, and Instrument Sans (SIL Open Font License) is bundled rather than
+left to the system face.
+
+**The scale is golden.** Type is `15 × φ^(n/6)` — sixths, because a full φ
+jump between adjacent sizes is far too coarse for a UI ramp, but every sixth
+step is still an exact golden multiple of the body: 15 → 24.27 → 39.27.
+Spacing is Fibonacci (5, 8, 13, 21, 34, 55), the integer approximation of the
+same ratio, so type and space agree without either being bent to fit.
+
+**Two densities, on purpose.** Arrival screens — launch, sign-in, onboarding,
+the passport cover — run at a 21pt page margin with large type; they have
+nothing to scan and this is where the product makes its case. Browse screens —
+feed, search results, saved — drop to an 8pt gutter and the card title falls a
+step, which puts the column width at ~184pt, the same as Rednote's. At a 21pt
+margin a two-column feed wastes about a sixth of the screen on nothing.
 
 One rule does most of the work: **the accent is not the button colour.**
 Primary actions are near-black. Violet appears in three places — Ask, an

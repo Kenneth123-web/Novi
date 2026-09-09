@@ -1,0 +1,89 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;0,700&display=swap">
+  <style>
+    body { margin: 0; font-family: "Instrument Sans", -apple-system, system-ui, sans-serif; }
+    a { color: #5B4BFF; } a:hover { color: #4938E8; }
+    .row { display: flex; align-items: baseline; gap: 16px; padding: 7px 0; border-bottom: 1px solid rgba(27,30,35,0.06); }
+    .n { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: #B0B5BF; width: 34px; flex-shrink: 0; }
+    .px { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; color: #868C97; width: 52px; flex-shrink: 0; text-align: right; }
+    .use { font-size: 11px; color: #B0B5BF; margin-left: auto; flex-shrink: 0; }
+    .h { font-size: 11px; font-weight: 700; letter-spacing: 0.09em; color: #868C97; }
+  </style>
+</helmet>
+
+<div style="width: 860px; padding: 40px 44px; background: #F6F6F8; display: flex; flex-direction: column; gap: 34px;">
+
+  <div style="display: flex; flex-direction: column; gap: 8px;">
+    <div style="font-size: 39.27px; font-weight: 600; letter-spacing: -1.1px; color: #1B1E23; line-height: 1.05;">The scale</div>
+    <div style="font-size: 15px; color: #6A707A; max-width: 620px; line-height: 1.5;">
+      One ratio governs type, one governs space. Type steps are φ<sup>n/6</sup> from a 15pt body, so every sixth step is an exact golden multiple — body → 24.27 → 39.27. Space is the Fibonacci sequence, which is the integer approximation of the same ratio, so the two systems agree without either being forced.
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 40px; align-items: flex-start;">
+
+    <!-- TYPE -->
+    <div style="flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px;">
+      <div class="h">TYPE · 15 × φ<sup>n/6</sup></div>
+      <div style="background: #fff; border-radius: 21px; padding: 8px 20px; box-shadow: 0 1px 2px rgba(27,30,35,0.04), 0 8px 24px rgba(27,30,35,0.05);">
+        <div class="row"><span class="n">+16</span><span class="px">54.12</span><span style="font-size:34px;font-weight:600;letter-spacing:-1.5px;color:#1B1E23;">Novi</span><span class="use">wordmark</span></div>
+        <div class="row"><span class="n">+12</span><span class="px">39.27</span><span style="font-size:31px;font-weight:600;letter-spacing:-1px;color:#1B1E23;">For you</span><span class="use">display · 15φ²</span></div>
+        <div class="row"><span class="n">&nbsp;+8</span><span class="px">28.49</span><span style="font-size:26px;font-weight:600;letter-spacing:-0.6px;color:#1B1E23;">Passport</span><span class="use">h1</span></div>
+        <div class="row"><span class="n">&nbsp;+6</span><span class="px">24.27</span><span style="font-size:23px;font-weight:600;letter-spacing:-0.4px;color:#1B1E23;">Explore this concept</span><span class="use">h1 small · 15φ</span></div>
+        <div class="row"><span class="n">&nbsp;+4</span><span class="px">20.67</span><span style="font-size:20px;font-weight:600;color:#1B1E23;">Stamps</span><span class="use">h2</span></div>
+        <div class="row"><span class="n">&nbsp;+2</span><span class="px">17.61</span><span style="font-size:17.6px;font-weight:600;color:#1B1E23;">Mathematics</span><span class="use">h3</span></div>
+        <div class="row"><span class="n">&nbsp;&nbsp;0</span><span class="px">15.00</span><span style="font-size:15px;color:#32363D;">Zoom in far enough and it looks straight</span><span class="use">body</span></div>
+        <div class="row"><span class="n">&nbsp;−1</span><span class="px">13.84</span><span style="font-size:13.84px;font-weight:500;color:#1B1E23;">Why matrices confuse everyone</span><span class="use">card title</span></div>
+        <div class="row"><span class="n">&nbsp;−2</span><span class="px">12.78</span><span style="font-size:12.78px;color:#6A707A;">Tuesday · 7 day streak</span><span class="use">small</span></div>
+        <div class="row" style="border-bottom:none;"><span class="n">&nbsp;−4</span><span class="px">10.88</span><span style="font-size:10.88px;font-weight:600;letter-spacing:0.06em;color:#868C97;">CONTINUE</span><span class="use">caption</span></div>
+      </div>
+    </div>
+
+    <!-- SPACE -->
+    <div style="width: 250px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px;">
+      <div class="h">SPACE · FIBONACCI</div>
+      <div style="background: #fff; border-radius: 21px; padding: 18px 20px; display: flex; flex-direction: column; gap: 11px; box-shadow: 0 1px 2px rgba(27,30,35,0.04), 0 8px 24px rgba(27,30,35,0.05);">
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">5</span><div style="height:11px;width:5px;background:#5B4BFF;border-radius:2px;"></div><span class="use">xs</span></div>
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">8</span><div style="height:11px;width:8px;background:#5B4BFF;border-radius:2px;"></div><span class="use">s · feed gutter</span></div>
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">13</span><div style="height:11px;width:13px;background:#5B4BFF;border-radius:2px;"></div><span class="use">m</span></div>
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">21</span><div style="height:11px;width:21px;background:#5B4BFF;border-radius:2px;"></div><span class="use">l · page margin</span></div>
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">34</span><div style="height:11px;width:34px;background:#5B4BFF;border-radius:2px;"></div><span class="use">xl</span></div>
+        <div style="display:flex;align-items:center;gap:12px;"><span class="px">55</span><div style="height:11px;width:55px;background:#5B4BFF;border-radius:2px;"></div><span class="use">xxl</span></div>
+      </div>
+
+      <div class="h" style="margin-top: 12px;">RADII</div>
+      <div style="background: #fff; border-radius: 21px; padding: 18px 20px; display: flex; align-items: flex-end; gap: 12px; box-shadow: 0 1px 2px rgba(27,30,35,0.04);">
+        <div style="width:38px;height:38px;border-radius:8px;background:#ECEEF1;"></div>
+        <div style="width:44px;height:44px;border-radius:13px;background:#ECEEF1;"></div>
+        <div style="width:52px;height:52px;border-radius:21px;background:#ECEEF1;"></div>
+        <div style="width:60px;height:60px;border-radius:34px;background:#ECEEF1;"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- The two densities, stated -->
+  <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div class="h">TWO DENSITIES, ON PURPOSE</div>
+    <div style="display: flex; gap: 16px;">
+      <div style="flex-grow:1;background:#fff;border-radius:21px;padding:20px;display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 2px rgba(27,30,35,0.04);">
+        <div style="font-size:17.6px;font-weight:600;color:#1B1E23;">Arrival — 21pt margins</div>
+        <div style="font-size:13.84px;color:#6A707A;line-height:1.5;">Launch, sign-in, onboarding, the passport cover. Nothing to scan, so the type runs large and the space is allowed to be generous. This is where the product makes its case.</div>
+      </div>
+      <div style="flex-grow:1;background:#fff;border-radius:21px;padding:20px;display:flex;flex-direction:column;gap:6px;box-shadow:0 1px 2px rgba(27,30,35,0.04);">
+        <div style="font-size:17.6px;font-weight:600;color:#1B1E23;">Browse — 8pt gutter</div>
+        <div style="font-size:13.84px;color:#6A707A;line-height:1.5;">Feed, search results, saved. The job is to get as much real content in front of the eye as it can hold. Cards run almost edge to edge and the title drops to 13.84.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

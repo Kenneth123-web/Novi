@@ -99,7 +99,7 @@ struct LaunchIntroView: View {
 
     private var wordmark: some View {
         Text("Novi")
-            .displayStyle(52, weight: .semibold)
+            .displayStyle(16)
             .foregroundStyle(NV.ink)
             // Wiped in behind a soft edge rather than animated per letter:
             // splitting the word into characters drops the kerning, which at

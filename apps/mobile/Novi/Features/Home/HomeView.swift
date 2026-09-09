@@ -16,7 +16,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: NV.Space.l) {
+                LazyVStack(alignment: .leading, spacing: NV.Space.m) {
                     header
 
                     if let item = model.continueItem {
@@ -60,21 +60,21 @@ struct HomeView: View {
     /// screen opens on the learner's name and their own momentum rather than
     /// on a toolbar.
     private var header: some View {
-        VStack(alignment: .leading, spacing: NV.Space.xs) {
+        VStack(alignment: .leading, spacing: 0) {
             Text(dayLabel)
                 .font(NV.small)
                 .foregroundStyle(NV.inkTertiary)
 
             HStack(alignment: .lastTextBaseline) {
                 Text(greetingTitle)
-                    .displayStyle(34)
+                    .displayStyle(8)
                     .foregroundStyle(NV.ink)
                 Spacer(minLength: NV.Space.s)
                 if model.streak > 1 { streakChip }
             }
         }
         .padding(.horizontal, NV.pageMargin)
-        .padding(.top, NV.Space.s)
+        .padding(.top, NV.Space.xs)
     }
 
     private var dayLabel: String {
@@ -122,18 +122,18 @@ struct HomeView: View {
                             )
                         )
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 17, weight: .semibold))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-                .frame(width: 52, height: 52)
+                .frame(width: 44, height: 44)
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("CONTINUE")
-                        .font(.system(size: 10.5, weight: .bold))
+                        .font(NV.step(-4, .bold))
                         .tracking(0.8)
                         .foregroundStyle(NV.spark)
                     Text(item.name)
-                        .font(NV.h3)
+                        .font(NV.bodyStrong)
                         .foregroundStyle(NV.ink)
                         .lineLimit(1)
                     HStack(spacing: NV.Space.s) {
@@ -150,7 +150,9 @@ struct HomeView: View {
             .cardSurface(NV.Radius.hero)
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, NV.pageMargin)
+        // The grid's margin, not the header's: this card sits directly above
+        // the columns and a different inset reads as a misalignment.
+        .padding(.horizontal, NV.gutter)
     }
 
     private var feed: some View {

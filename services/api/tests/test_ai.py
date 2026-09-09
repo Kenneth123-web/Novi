@@ -8,6 +8,7 @@ tested against a stubbed `complete_json`.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
@@ -51,6 +52,18 @@ def fake_ai(monkeypatch: pytest.MonkeyPatch):
 # ── Gateway ──────────────────────────────────────────────────────────────────
 
 
+def _messages_url() -> str:
+    return f"{get_settings().ai_base_url.rstrip('/')}/messages"
+
+
+def _text_reply(text: str) -> dict:
+    """An Anthropic /v1/messages success body."""
+    return {
+        "content": [{"type": "text", "text": text}],
+        "usage": {"input_tokens": 5, "output_tokens": 3},
+    }
+
+
 @respx.mock
 async def test_gateway_maps_capacity_errors_to_ai_unavailable(
     monkeypatch: pytest.MonkeyPatch,
@@ -63,10 +76,16 @@ async def test_gateway_maps_capacity_errors_to_ai_unavailable(
     monkeypatch.setenv("AI_API_KEY", "test-key")
     get_settings.cache_clear()
 
-    respx.post(f"{get_settings().ai_base_url}/chat/completions").mock(
+    respx.post(_messages_url()).mock(
         return_value=httpx.Response(
-            200, json={"error": {"message": "All available accounts exhausted",
-                                 "type": "server_error"}}
+            200,
+            json={
+                "type": "error",
+                "error": {
+                    "type": "rate_limit_error",
+                    "message": "Upstream rate limit exceeded, please retry later",
+                },
+            },
         )
     )
     with pytest.raises(AIUnavailable) as exc:
@@ -75,7 +94,103 @@ async def test_gateway_maps_capacity_errors_to_ai_unavailable(
     assert exc.value.code == "AI_UNAVAILABLE"
     assert exc.value.details["reason"] == "capacity"
     # The upstream text is kept for the log, not for the student.
-    assert "exhausted" in exc.value.details["upstream"]
+    assert "rate limit" in exc.value.details["upstream"].lower()
+    get_settings.cache_clear()
+
+
+@respx.mock
+async def test_gateway_sends_the_anthropic_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`system` is a top-level field, not a message.
+
+    Passed as a message it is accepted and silently ignored — no error, and
+    the model never sees the rules it was supposed to follow.
+    """
+    monkeypatch.setenv("AI_API_KEY", "test-key")
+    get_settings.cache_clear()
+
+    route = respx.post(_messages_url()).mock(
+        return_value=httpx.Response(200, json=_text_reply('{"summary": "ok"}'))
+    )
+    await AIGateway().complete_json(system="RULES", user="question")
+
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["system"] == "RULES"
+    assert sent["messages"] == [{"role": "user", "content": "question"}]
+    assert route.calls.last.request.headers["x-api-key"] == "test-key"
+    assert route.calls.last.request.headers["anthropic-version"] == "2023-06-01"
+    get_settings.cache_clear()
+
+
+@respx.mock
+async def test_gateway_falls_through_to_a_model_the_account_can_serve(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Haiku is configured but this gateway does not carry it.
+
+    `model_not_found` is a fact about the account, not a failure to report —
+    so it moves to the next candidate instead of surfacing to the learner.
+    """
+    monkeypatch.setenv("AI_API_KEY", "test-key")
+    monkeypatch.setenv("AI_MODEL", "claude-haiku-4-5")
+    get_settings.cache_clear()
+
+    seen: list[str] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model == "claude-haiku-4-5":
+            return httpx.Response(
+                200,
+                json={
+                    "type": "error",
+                    "error": {
+                        "type": "model_not_found",
+                        "message": f'Model "{model}" is not supported by any configured account',
+                    },
+                },
+            )
+        return httpx.Response(200, json=_text_reply('{"summary": "fell through"}'))
+
+    respx.post(_messages_url()).mock(side_effect=responder)
+
+    result = await AIGateway().complete_json(system="s", user="u")
+    assert seen[0] == "claude-haiku-4-5"
+    assert result.model != "claude-haiku-4-5"
+    assert result.data["summary"] == "fell through"
+    get_settings.cache_clear()
+
+
+@respx.mock
+async def test_a_refused_model_is_not_retried_on_the_next_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Otherwise every request pays for the same rejection again."""
+    monkeypatch.setenv("AI_API_KEY", "test-key")
+    monkeypatch.setenv("AI_MODEL", "claude-haiku-4-5")
+    get_settings.cache_clear()
+
+    seen: list[str] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model == "claude-haiku-4-5":
+            return httpx.Response(
+                200,
+                json={"type": "error",
+                      "error": {"type": "model_not_found", "message": "nope"}},
+            )
+        return httpx.Response(200, json=_text_reply('{"summary": "ok"}'))
+
+    respx.post(_messages_url()).mock(side_effect=responder)
+
+    client = AIGateway()
+    await client.complete_json(system="s", user="u")
+    seen.clear()
+    await client.complete_json(system="s", user="u")
+
+    assert "claude-haiku-4-5" not in seen
     get_settings.cache_clear()
 
 
@@ -85,13 +200,9 @@ async def test_gateway_unwraps_a_json_code_fence(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setenv("AI_API_KEY", "test-key")
     get_settings.cache_clear()
 
-    respx.post(f"{get_settings().ai_base_url}/chat/completions").mock(
+    respx.post(_messages_url()).mock(
         return_value=httpx.Response(
-            200,
-            json={
-                "choices": [{"message": {"content": '```json\n{"summary": "ok"}\n```'}}],
-                "usage": {"prompt_tokens": 5, "completion_tokens": 3},
-            },
+            200, json=_text_reply('```json\n{"summary": "ok"}\n```')
         )
     )
     result = await AIGateway().complete_json(system="s", user="u")

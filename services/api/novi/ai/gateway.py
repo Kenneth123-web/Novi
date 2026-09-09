@@ -31,6 +31,21 @@ logger = get_logger(__name__)
 # These are matched on the message because the status code is often a
 # indistinguishable 500 — and this failure means "try later", not "you sent a
 # bad request", which is a different thing to tell the user.
+ANTHROPIC_VERSION = "2023-06-01"
+
+
+class ModelUnavailable(Exception):
+    """The gateway does not serve this model for this account.
+
+    Distinct from AIUnavailable on purpose: it is not a failure to report to
+    the learner, it is an instruction to try the next model in the chain.
+    """
+
+    def __init__(self, model: str, message: str) -> None:
+        self.model = model
+        super().__init__(message)
+
+
 _CAPACITY_MARKERS = (
     "accounts exhausted",
     "no available channel",
@@ -89,10 +104,102 @@ def _extract_json(text: str) -> dict[str, Any] | None:
 class AIGateway:
     def __init__(self, client: httpx.AsyncClient | None = None) -> None:
         self._client = client
+        # Models the gateway has told us it cannot serve. Remembered for the
+        # process so a five-model fallback chain costs one wasted call, not one
+        # per request — `model_not_found` is a fact about the account, not a
+        # transient.
+        self._unavailable: set[str] = set()
 
     @property
     def configured(self) -> bool:
         return get_settings().ai_configured
+
+    def candidates(self, preferred: str | None = None) -> list[str]:
+        """The model to try, then what to fall back to.
+
+        Order is preserved and duplicates dropped, so a preferred model that is
+        also in the fallback list is tried once, first.
+        """
+        s = get_settings()
+        chain = [preferred or s.ai_model, *s.ai_model_fallbacks]
+        seen: set[str] = set()
+        out: list[str] = []
+        for model in chain:
+            if model and model not in seen:
+                seen.add(model)
+                out.append(model)
+        return out
+
+    # ── Transport ────────────────────────────────────────────────────────────
+
+    def _endpoint(self) -> str:
+        s = get_settings()
+        base = s.ai_base_url.rstrip("/")
+        return f"{base}/messages" if s.ai_protocol == "anthropic" else f"{base}/chat/completions"
+
+    def _headers(self) -> dict[str, str]:
+        s = get_settings()
+        if s.ai_protocol == "anthropic":
+            return {
+                "x-api-key": s.ai_api_key or "",
+                "anthropic-version": ANTHROPIC_VERSION,
+                "content-type": "application/json",
+            }
+        return {
+            "Authorization": f"Bearer {s.ai_api_key}",
+            "Content-Type": "application/json",
+        }
+
+    def _build_payload(
+        self, *, model: str, system: str, user: str, max_tokens: int, temperature: float
+    ) -> dict[str, Any]:
+        s = get_settings()
+        if s.ai_protocol == "anthropic":
+            # `system` is a top-level field here, not a message with a role.
+            # Passing it as a message is accepted and then ignored, which is
+            # the worst of both: no error, and the model never sees the rules.
+            return {
+                "model": model,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+                "system": system,
+                "messages": [{"role": "user", "content": user}],
+            }
+        return {
+            "model": model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "response_format": {"type": "json_object"},
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+    def _extract_text(self, body: dict[str, Any]) -> str | None:
+        """The reply text, from either protocol's response shape."""
+        if get_settings().ai_protocol == "anthropic":
+            blocks = body.get("content")
+            if not isinstance(blocks, list):
+                return None
+            parts = [
+                b.get("text", "")
+                for b in blocks
+                if isinstance(b, dict) and b.get("type") == "text"
+            ]
+            return "".join(parts) if parts else None
+        try:
+            return body["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError):
+            return None
+
+    @staticmethod
+    def _usage(body: dict[str, Any]) -> tuple[int, int]:
+        usage = body.get("usage") or {}
+        return (
+            int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0),
+            int(usage.get("output_tokens") or usage.get("completion_tokens") or 0),
+        )
 
     async def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
         s = get_settings()
@@ -105,12 +212,7 @@ class AIGateway:
         owns_client = self._client is None
         try:
             response = await client.post(
-                f"{s.ai_base_url.rstrip('/')}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {s.ai_api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
+                self._endpoint(), headers=self._headers(), json=payload
             )
         except httpx.HTTPError as exc:
             logger.warning("ai_transport_error", extra={"error": type(exc).__name__})
@@ -130,8 +232,16 @@ class AIGateway:
             ) from None
 
         if isinstance(body, dict) and body.get("error"):
-            message = str(body["error"].get("message", "")) or "AI request failed"
+            error = body["error"]
+            message = str(error.get("message", "")) or "AI request failed"
+            kind = str(error.get("type", ""))
             lowered = message.lower()
+
+            # A model the account cannot serve is not a capacity problem and
+            # must not be retried — it is a signal to try the next candidate.
+            if kind == "model_not_found" or "not supported by any configured" in lowered:
+                raise ModelUnavailable(payload.get("model", ""), message)
+
             reason = (
                 "capacity"
                 if any(marker in lowered for marker in _CAPACITY_MARKERS)
@@ -168,31 +278,62 @@ class AIGateway:
         temperature: float = 0.4,
         required_keys: tuple[str, ...] = (),
     ) -> AIResult:
-        """Ask for a JSON object and return it parsed and key-checked."""
+        """Ask for a JSON object and return it parsed and key-checked.
+
+        Walks the model chain: the preferred model first, then the configured
+        fallbacks, skipping any the gateway has already said it cannot serve.
+        That is what lets `AI_MODEL` name the model we actually want — Haiku —
+        without the product breaking on a gateway that does not carry it yet.
+        """
         s = get_settings()
-        chosen = model or s.ai_model
         started = time.perf_counter()
 
-        body = await self._post(
-            {
-                "model": chosen,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
-                ],
-                "response_format": {"type": "json_object"},
-                "temperature": temperature,
-                "max_tokens": max_tokens or s.ai_max_output_tokens,
-            }
-        )
+        chain = [m for m in self.candidates(model) if m not in self._unavailable]
+        if not chain:
+            # Everything we know about has been refused. Try the preferred one
+            # anyway: the account's roster can change under us.
+            self._unavailable.clear()
+            chain = self.candidates(model)
+
+        body: dict[str, Any] | None = None
+        chosen = chain[0]
+        last: ModelUnavailable | None = None
+
+        for candidate in chain:
+            payload = self._build_payload(
+                model=candidate,
+                system=system,
+                user=user,
+                max_tokens=max_tokens or s.ai_max_output_tokens,
+                temperature=temperature,
+            )
+            try:
+                body = await self._post(payload)
+                chosen = candidate
+                break
+            except ModelUnavailable as exc:
+                logger.warning("ai_model_unavailable", extra={"model": candidate})
+                self._unavailable.add(candidate)
+                last = exc
+                continue
+
+        if body is None:
+            raise AIUnavailable(
+                "No configured AI model is available",
+                details={
+                    "reason": "no_model",
+                    "tried": chain,
+                    "upstream": str(last) if last else "",
+                },
+            )
+
         latency_ms = int((time.perf_counter() - started) * 1000)
 
-        try:
-            text = body["choices"][0]["message"]["content"] or ""
-        except (KeyError, IndexError, TypeError):
+        text = self._extract_text(body)
+        if text is None:
             raise AIUnavailable(
                 "The AI service returned an unexpected shape", details={"reason": "malformed"}
-            ) from None
+            )
 
         data = _extract_json(text)
         if data is None:
@@ -208,12 +349,12 @@ class AIGateway:
             # would turn a partial answer into no answer.
             logger.warning("ai_missing_keys", extra={"model": chosen, "missing": warnings})
 
-        usage = body.get("usage") or {}
+        input_tokens, output_tokens = self._usage(body)
         return AIResult(
             data=data,
             model=chosen,
-            input_tokens=int(usage.get("prompt_tokens") or 0),
-            output_tokens=int(usage.get("completion_tokens") or 0),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
             latency_ms=latency_ms,
             raw_text=text,
             warnings=warnings,

@@ -210,7 +210,7 @@ async def _award_for_quiz(
         kind="concept",
         key=concept.slug,
         title=concept.name,
-        subtitle="Concept learned",
+        subtitle="Learned",
         icon="checkmark.seal",
     )
     if stamp:

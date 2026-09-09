@@ -70,7 +70,7 @@ struct AuthView: View {
 
             VStack(alignment: .leading, spacing: NV.Space.s) {
                 Text(mode == .signIn ? "Welcome back." : "Welcome to your\nlearning world.")
-                    .displayStyle(34)
+                    .displayStyle(10)
                     .foregroundStyle(NV.ink)
                     .fixedSize(horizontal: false, vertical: true)
 

@@ -27,8 +27,8 @@ struct ContentCard: View {
 
                     footer
                 }
-                .padding(.horizontal, 9)
-                .padding(.top, 8)
+                .padding(.horizontal, NV.Space.s)
+                .padding(.top, NV.Space.s)
                 .padding(.bottom, 9)
             }
             .background(NV.surface)
@@ -110,8 +110,16 @@ struct ContentCard: View {
         // Title lines via boundingRect, not characters ÷ width. Mixed Latin,
         // CJK and digits have no single character width, and being wrong by
         // one line is a visible step in the column.
-        let titleWidth = width - 18
-        let font = UIFont.systemFont(ofSize: 14.5, weight: .medium)
+        //
+        // The size and the family both come from the same place the card
+        // draws with. This measured the SYSTEM font at a hardcoded 14.5 while
+        // the card rendered Instrument Sans at 13.84 — two different faces at
+        // two different sizes, so every estimate was wrong by a little and
+        // the columns drifted.
+        let titleWidth = width - NV.Space.s * 2
+        let font = UIFont(name: "Instrument Sans", size: NV.cardTitleSize)?
+            .withWeight(.medium)
+            ?? UIFont.systemFont(ofSize: NV.cardTitleSize, weight: .medium)
         let bounds = (content.title as NSString).boundingRect(
             with: CGSize(width: titleWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
@@ -121,7 +129,23 @@ struct ContentCard: View {
         let lineHeight = font.lineHeight
         let lines = min(2, max(1, Int(ceil(bounds.height / lineHeight))))
 
-        //  8 top padding + title + 6 gap + 15 footer + 9 bottom padding
-        return cover + 8 + lineHeight * CGFloat(lines) + 6 + 15 + 9
+        //  8 top + title + 6 gap + 15 footer + 9 bottom
+        return cover + NV.Space.s + lineHeight * CGFloat(lines) + 6 + 15 + 9
+    }
+}
+
+
+private extension UIFont {
+    /// A weighted variant of a named face.
+    ///
+    /// `UIFont(name:size:)` always returns the regular cut, and the card draws
+    /// its title at medium — a measurement taken against regular comes out
+    /// narrow, which is exactly the kind of small error that shows up as a
+    /// column stepping half a line out of alignment.
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([
+            .traits: [UIFontDescriptor.TraitKey.weight: weight]
+        ])
+        return UIFont(descriptor: descriptor, size: pointSize)
     }
 }

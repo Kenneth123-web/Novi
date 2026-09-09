@@ -99,7 +99,7 @@ async def mark_learned(body: MarkLearned, user: CurrentUser, db: DB) -> dict:
         kind="concept",
         key=concept.slug,
         title=concept.name,
-        subtitle="Marked as learned",
+        subtitle="Learned",
         icon="checkmark.seal",
     )
     progress = await knowledge.get_or_create_progress(db, user.id, concept.id)

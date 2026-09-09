@@ -135,7 +135,7 @@ struct OnboardingView: View {
 
                 VStack(alignment: .leading, spacing: NV.Space.m) {
                     Text("Welcome to your\nlearning world.")
-                        .displayStyle(34)
+                        .displayStyle(10)
                         .foregroundStyle(NV.ink)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Five quick questions, and your feed stops being random.")
