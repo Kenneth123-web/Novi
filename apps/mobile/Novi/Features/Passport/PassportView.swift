@@ -64,42 +64,80 @@ struct PassportView: View {
         }
     }
 
+    /// The cover reads as a document, not a dashboard.
+    ///
+    /// Deep ink rather than the accent: a full-bleed violet panel is a
+    /// dashboard header, and this is meant to be the one screen worth opening
+    /// for its own sake. The concentric rules are the guilloché a real
+    /// passport prints to make itself hard to forge — here they are just what
+    /// stops a dark rectangle from looking like an empty state.
     private func cover(_ passport: PassportDTO) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.l) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: NV.Space.xs) {
                 Text("LEARNING PASSPORT")
-                    .font(.system(size: 11, weight: .bold))
-                    .tracking(1.6)
-                    .foregroundStyle(.white.opacity(0.75))
+                    .font(.system(size: 10, weight: .bold))
+                    .tracking(2.0)
+                    .foregroundStyle(.white.opacity(0.52))
                 Text(session.user?.displayName ?? "")
-                    .font(.system(size: 26, weight: .bold))
+                    .displayStyle(27)
                     .foregroundStyle(.white)
             }
 
+            Rectangle()
+                .fill(.white.opacity(0.12))
+                .frame(height: 1)
+
             HStack(spacing: 0) {
-                stat("\(passport.conceptsCovered)", "Concepts")
-                stat("\(passport.conceptsLearned)", "Learned")
-                stat("\(passport.subjects)", "Subjects")
-                stat("\(passport.sessions)", "Sessions")
+                stat("\(passport.conceptsCovered)", "CONCEPTS")
+                stat("\(passport.conceptsLearned)", "LEARNED")
+                stat("\(passport.subjects)", "SUBJECTS")
+                stat("\(passport.sessions)", "SESSIONS")
             }
         }
-        .padding(NV.Space.l)
+        .padding(NV.Space.xl - 2)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            LinearGradient(
-                colors: [NV.accent, NV.accentDeep],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: NV.Radius.sheet, style: .continuous)
-        )
+        .background {
+            ZStack(alignment: .topTrailing) {
+                LinearGradient(
+                    colors: [Color(hex: 0x24272E), NV.ink950, NV.ink900],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                )
+
+                // Guilloché. Clipped by the card's own shape below, so the
+                // rings can run off the corner instead of being tucked inside
+                // it — a ring that stops short of the edge reads as a sticker.
+                Circle()
+                    .strokeBorder(.white.opacity(0.07), lineWidth: 1)
+                    .frame(width: 210, height: 210)
+                    .offset(x: 50, y: -50)
+                Circle()
+                    .strokeBorder(.white.opacity(0.05), lineWidth: 1)
+                    .frame(width: 160, height: 160)
+                    .offset(x: 24, y: -24)
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [NV.spark.opacity(0.40), NV.spark.opacity(0)],
+                            center: .center, startRadius: 0, endRadius: 60
+                        )
+                    )
+                    .frame(width: 120, height: 120)
+                    .offset(x: 24, y: -8)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: NV.Radius.hero, style: .continuous))
+        .shadow(color: NV.ink900.opacity(0.18), radius: 20, x: 0, y: 10)
     }
 
     private func stat(_ value: String, _ label: String) -> some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(value).font(.system(size: 21, weight: .bold)).foregroundStyle(.white)
+            Text(value)
+                .font(NV.font(23, .semibold))
+                .foregroundStyle(.white)
             Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .font(.system(size: 9.5, weight: .semibold))
+                .tracking(0.6)
+                .foregroundStyle(.white.opacity(0.50))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -114,7 +152,7 @@ struct PassportView: View {
                             title: stamp.title,
                             subtitle: stamp.subtitle,
                             icon: stamp.icon,
-                            tint: stamp.kind == "milestone" ? NV.warning : NV.accent
+                            tint: stamp.kind == "milestone" ? NV.warning : NV.spark
                         )
                     }
                 }
@@ -132,11 +170,11 @@ struct PassportView: View {
                     HStack(spacing: NV.Space.s) {
                         Image(systemName: card.icon)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(NV.accent)
+                            .foregroundStyle(NV.spark)
                         Text(card.name).font(NV.h3).foregroundStyle(NV.ink)
                         Spacer(minLength: 0)
                         Text("\(card.learned)/\(card.totalTouched)")
-                            .font(NV.caption).foregroundStyle(NV.inkFaint)
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
                     }
 
                     NVProgressBar(value: card.progress)
@@ -184,7 +222,7 @@ struct PassportView: View {
                 } label: {
                     Image(systemName: "checkmark.circle")
                         .font(.system(size: 13))
-                        .foregroundStyle(NV.accent)
+                        .foregroundStyle(NV.spark)
                 }
                 .buttonStyle(.plain)
             }

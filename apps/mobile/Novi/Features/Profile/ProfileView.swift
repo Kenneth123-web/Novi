@@ -21,7 +21,7 @@ struct ProfileView: View {
                     signOut
                     Spacer(minLength: 90)
                 }
-                .padding(.horizontal, NV.Space.l)
+                .padding(.horizontal, NV.pageMargin)
                 .padding(.top, NV.Space.s)
             }
             .background(NV.page)
@@ -43,14 +43,14 @@ struct ProfileView: View {
                 Text(session.user?.displayName ?? "")
                     .font(NV.h2).foregroundStyle(NV.ink)
                 Text("@\(session.user?.username ?? "")")
-                    .font(NV.small).foregroundStyle(NV.inkFaint)
+                    .font(NV.small).foregroundStyle(NV.inkTertiary)
                 if let profile = session.profile {
                     HStack(spacing: 5) {
                         if let stage = profile.stage {
-                            NVTag(text: stageLabel(stage), tint: NV.accent)
+                            NVTag(text: stageLabel(stage), tint: NV.spark)
                         }
                         if let curriculum = profile.curriculum {
-                            NVTag(text: curriculum, tint: NV.inkFaint)
+                            NVTag(text: curriculum, tint: NV.inkTertiary)
                         }
                     }
                     .padding(.top, 3)
@@ -77,7 +77,7 @@ struct ProfileView: View {
                     let total = day.content + day.questions + day.quizzes
                     VStack(spacing: 4) {
                         RoundedRectangle(cornerRadius: 3, style: .continuous)
-                            .fill(total > 0 ? NV.accent : NV.track)
+                            .fill(total > 0 ? NV.spark : NV.track)
                             .frame(height: max(4, CGFloat(total) / CGFloat(peak) * 56))
                         Text(dayLabel(day.date))
                             .font(.system(size: 8))
@@ -118,12 +118,12 @@ struct ProfileView: View {
                             // setting and a black box.
                             Text("\(Int(weight * 100))")
                                 .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(NV.accent)
+                                .foregroundStyle(NV.spark)
                         }
                         .foregroundStyle(NV.ink)
                         .padding(.horizontal, NV.Space.m)
                         .padding(.vertical, 9)
-                        .cardSurface(NV.Radius.chip)
+                        .cardSurface(NV.Radius.pill)
                     }
                 }
             }
@@ -186,7 +186,7 @@ private struct InterestEditor: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: NV.Space.m) {
                     Text("Tap order sets priority. The first subject leads your feed.")
-                        .font(NV.small).foregroundStyle(NV.inkFaint)
+                        .font(NV.small).foregroundStyle(NV.inkTertiary)
                     FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                         ForEach(session.subjects) { subject in
                             let rank = selected.firstIndex(of: subject.slug)

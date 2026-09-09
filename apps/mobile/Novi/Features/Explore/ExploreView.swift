@@ -35,7 +35,7 @@ struct ExploreView: View {
                     }
                     Spacer(minLength: 90)
                 }
-                .padding(.horizontal, NV.Space.l)
+                .padding(.horizontal, NV.pageMargin)
                 .padding(.top, NV.Space.s)
             }
             .background(NV.page)
@@ -52,7 +52,7 @@ struct ExploreView: View {
             .navigationDestination(for: DiscussionDTO.self) { DiscussionView(discussion: $0) }
             .task {
                 await session.loadSubjects()
-                Demo.once {
+                Demo.once("search") {
                     if let seeded = Demo.search {
                         query = seeded
                         runSearch(seeded)
@@ -66,7 +66,7 @@ struct ExploreView: View {
         HStack(spacing: NV.Space.s) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
             TextField("Search a concept, topic or question", text: $query)
                 .font(NV.body)
                 .focused($focused)
@@ -108,7 +108,7 @@ struct ExploreView: View {
                         .foregroundStyle(NV.ink)
                         .padding(.horizontal, NV.Space.m)
                         .padding(.vertical, 10)
-                        .cardSurface(NV.Radius.chip)
+                        .cardSurface(NV.Radius.pill)
                     }
                     .buttonStyle(.plain)
                 }
@@ -153,21 +153,21 @@ struct ExploreView: View {
             name: concept.name, id: concept.id.uuidString, slug: concept.slug
         )) {
             VStack(alignment: .leading, spacing: NV.Space.s) {
-                Text("CONCEPT").font(NV.caption).foregroundStyle(NV.accent)
+                Text("CONCEPT").font(NV.caption).foregroundStyle(NV.spark)
                 Text(concept.name).font(NV.h2).foregroundStyle(NV.ink)
                 if let subject = concept.subjectName {
-                    Text(subject).font(NV.small).foregroundStyle(NV.inkFaint)
+                    Text(subject).font(NV.small).foregroundStyle(NV.inkTertiary)
                 }
                 HStack(spacing: 5) {
                     Text("Open concept").font(NV.small.weight(.semibold))
                     Image(systemName: "arrow.right").font(.system(size: 11, weight: .bold))
                 }
-                .foregroundStyle(NV.accent)
+                .foregroundStyle(NV.spark)
                 .padding(.top, 2)
             }
             .padding(NV.Space.l)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(NV.accentSoft,
+            .background(NV.sparkSoft,
                         in: RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous))
         }
         .buttonStyle(.plain)
@@ -182,12 +182,12 @@ struct ExploreView: View {
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
-                    .background(NV.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .background(NV.spark, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Ask about “\(query)”").font(NV.bodyStrong).foregroundStyle(NV.ink)
                         .lineLimit(1)
                     Text("Get an explanation at your level")
-                        .font(NV.caption).foregroundStyle(NV.inkFaint)
+                        .font(NV.caption).foregroundStyle(NV.inkTertiary)
                 }
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
@@ -202,7 +202,7 @@ struct ExploreView: View {
 
     private func contentSection(_ items: [ContentDTO]) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
-            Text("CONTENT").font(NV.caption).foregroundStyle(NV.inkFaint)
+            Text("CONTENT").font(NV.caption).foregroundStyle(NV.inkTertiary)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: NV.Space.m) {
                     ForEach(items) { item in
@@ -219,7 +219,7 @@ struct ExploreView: View {
 
     private func discussionSection(_ items: [DiscussionDTO]) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
-            Text("DISCUSSIONS").font(NV.caption).foregroundStyle(NV.inkFaint)
+            Text("DISCUSSIONS").font(NV.caption).foregroundStyle(NV.inkTertiary)
             ForEach(items) { discussion in
                 NavigationLink(value: discussion) {
                     DiscussionRow(discussion: discussion)

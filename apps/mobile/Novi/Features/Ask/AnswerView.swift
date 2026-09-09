@@ -34,7 +34,7 @@ struct AnswerView: View {
     private var question: some View {
         VStack(alignment: .leading, spacing: NV.Space.xs) {
             if !e.concept.isEmpty {
-                NVTag(text: e.concept, icon: "lightbulb", tint: NV.accent)
+                NVTag(text: e.concept, icon: "lightbulb", tint: NV.spark)
             }
             Text(askedQuestion)
                 .font(NV.h2)
@@ -52,7 +52,7 @@ struct AnswerView: View {
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(NV.Space.l)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(NV.accentSoft,
+                    .background(NV.sparkSoft,
                                 in: RoundedRectangle(cornerRadius: NV.Radius.card,
                                                      style: .continuous))
             }
@@ -70,7 +70,7 @@ struct AnswerView: View {
     @ViewBuilder
     private func section(
         _ title: String, _ icon: String, _ text: String,
-        mono: Bool = false, tint: Color = NV.inkFaint
+        mono: Bool = false, tint: Color = NV.inkTertiary
     ) -> some View {
         if !text.isEmpty {
             VStack(alignment: .leading, spacing: NV.Space.s) {
@@ -100,7 +100,7 @@ struct AnswerView: View {
                 .foregroundStyle(NV.ink)
             Text("Where this idea shows up, and what people argue about")
                 .font(NV.small)
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
         }
         .padding(.top, NV.Space.s)
     }
@@ -111,7 +111,7 @@ struct AnswerView: View {
                 Image(systemName: icon).font(.system(size: 11, weight: .semibold))
                 Text(title.uppercased()).font(NV.caption)
             }
-            .foregroundStyle(NV.inkFaint)
+            .foregroundStyle(NV.inkTertiary)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: NV.Space.m) {
@@ -133,7 +133,7 @@ struct AnswerView: View {
                     .font(.system(size: 11, weight: .semibold))
                 Text("DISCUSS").font(NV.caption)
             }
-            .foregroundStyle(NV.inkFaint)
+            .foregroundStyle(NV.inkTertiary)
 
             VStack(spacing: NV.Space.s) {
                 ForEach(answer.discuss) { discussion in
@@ -153,7 +153,7 @@ struct AnswerView: View {
                     .font(.system(size: 11, weight: .semibold))
                 Text("RELATED CONCEPTS").font(NV.caption)
             }
-            .foregroundStyle(NV.inkFaint)
+            .foregroundStyle(NV.inkTertiary)
 
             FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                 ForEach(answer.relatedConcepts) { concept in
@@ -178,7 +178,7 @@ struct AnswerView: View {
                     Image(systemName: "arrow.triangle.branch").font(.system(size: 12, weight: .semibold))
                     Text("How do these connect?").font(NV.small.weight(.semibold))
                 }
-                .foregroundStyle(NV.accent)
+                .foregroundStyle(NV.spark)
                 .padding(.top, NV.Space.xs)
             }
             .buttonStyle(.plain)
@@ -192,10 +192,10 @@ struct AnswerView: View {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
             }
         }
-        .foregroundStyle(tappable ? NV.accent : NV.inkFaint)
+        .foregroundStyle(tappable ? NV.spark : NV.inkTertiary)
         .padding(.horizontal, NV.Space.m)
         .padding(.vertical, 8)
-        .background(tappable ? NV.accentSoft : NV.fill, in: Capsule())
+        .background(tappable ? NV.sparkSoft : NV.fill, in: Capsule())
     }
 }
 
@@ -240,7 +240,7 @@ struct RailCard: View {
                         Text(nv_count(content.likes))
                     }
                     .font(NV.caption)
-                    .foregroundStyle(NV.inkFaint)
+                    .foregroundStyle(NV.inkTertiary)
                 }
                 .padding(9)
                 // Fixed height so the row of cards has one baseline; a
@@ -261,14 +261,14 @@ struct DiscussionRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                NVTag(text: discussion.community, icon: "person.2", tint: NV.accent)
+                NVTag(text: discussion.community, icon: "person.2", tint: NV.spark)
                 Spacer(minLength: 0)
                 Label(nv_count(discussion.upvotes), systemImage: "arrow.up")
                     .font(NV.caption)
-                    .foregroundStyle(NV.inkFaint)
+                    .foregroundStyle(NV.inkTertiary)
                 Label(nv_count(discussion.commentCount), systemImage: "bubble.left")
                     .font(NV.caption)
-                    .foregroundStyle(NV.inkFaint)
+                    .foregroundStyle(NV.inkTertiary)
             }
             Text(discussion.title)
                 .font(NV.bodyStrong)
@@ -277,7 +277,7 @@ struct DiscussionRow: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(discussion.body)
                 .font(NV.small)
-                .foregroundStyle(NV.inkSoft)
+                .foregroundStyle(NV.inkSecondary)
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
         }

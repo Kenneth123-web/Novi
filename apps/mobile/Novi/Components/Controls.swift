@@ -5,7 +5,7 @@ import SwiftUI
 /// looking like the same app.
 
 struct NVButton: View {
-    enum Kind { case primary, secondary, quiet }
+    enum Kind { case primary, accent, secondary, quiet }
 
     let title: String
     var icon: String?
@@ -28,7 +28,7 @@ struct NVButton: View {
                 if loading {
                     ProgressView()
                         .progressViewStyle(.circular)
-                        .tint(kind == .primary ? .white : NV.ink)
+                        .tint(kind == .secondary || kind == .quiet ? NV.ink : .white)
                 }
             }
             .font(NV.h3)
@@ -51,21 +51,26 @@ struct NVButton: View {
     }
 
     /// Disabled is its own pair of colours, not the enabled pair at reduced
-    /// opacity. A translucent accent button reads as a pale button with pale
-    /// text on it: it fails contrast and still looks pressable.
+    /// opacity. A translucent button reads as a pale button with pale text on
+    /// it: it fails contrast and still looks pressable.
     private var foreground: Color {
         guard enabled else { return NV.inkGhost }
         switch kind {
-        case .primary: return .white
+        case .primary, .accent: return .white
         case .secondary: return NV.ink
-        case .quiet: return NV.accent
+        case .quiet: return NV.spark
         }
     }
 
+    /// Primary is near-black, not the accent. The accent is reserved for the
+    /// places the product is doing something for you — Ask, an active state,
+    /// an earned stamp — and putting it on every button is exactly what makes
+    /// an accent stop meaning anything.
     private var background: Color {
         guard enabled else { return kind == .quiet ? .clear : NV.fill }
         switch kind {
-        case .primary: return NV.accent
+        case .primary: return NV.ink900
+        case .accent: return NV.spark
         case .secondary: return NV.surface
         case .quiet: return .clear
         }
@@ -89,7 +94,7 @@ struct NVField: View {
         VStack(alignment: .leading, spacing: NV.Space.xs) {
             Text(title)
                 .font(NV.caption)
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
 
             Group {
                 if secure {
@@ -107,13 +112,16 @@ struct NVField: View {
             .submitLabel(submitLabel)
             .focused($focused)
             .onSubmit(onSubmit)
-            .padding(.horizontal, NV.Space.m)
-            .frame(height: 48)
-            .background(NV.fill, in: RoundedRectangle(cornerRadius: NV.Radius.control,
-                                                      style: .continuous))
+            .padding(.horizontal, NV.Space.l - 2)
+            .frame(height: 52)
+            // White with a drawn edge, not a grey fill. A fill has no edge of
+            // its own, so on any tinted backdrop it stops reading as a control
+            // at all — which is what happened over the sign-in aurora.
+            .background(NV.surface, in: RoundedRectangle(cornerRadius: NV.Radius.control,
+                                                         style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: NV.Radius.control, style: .continuous)
-                    .stroke(strokeColour, lineWidth: 1.5)
+                    .strokeBorder(strokeColour, lineWidth: focused || error != nil ? 1.5 : 1)
             }
 
             // The row appears only when there is a message. An empty 16pt gap
@@ -131,7 +139,7 @@ struct NVField: View {
 
     private var strokeColour: Color {
         if error != nil { return NV.error.opacity(0.7) }
-        return focused ? NV.accent.opacity(0.5) : .clear
+        return focused ? NV.spark.opacity(0.55) : NV.hairline
     }
 }
 
@@ -154,8 +162,8 @@ struct NVChip: View {
             .foregroundStyle(selected ? .white : NV.ink)
             .padding(.horizontal, NV.Space.l)
             .padding(.vertical, 10)
-            .background(selected ? NV.accent : NV.fill,
-                        in: RoundedRectangle(cornerRadius: NV.Radius.chip, style: .continuous))
+            .background(selected ? NV.spark : NV.fill,
+                        in: RoundedRectangle(cornerRadius: NV.Radius.pill, style: .continuous))
         }
         .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.12), value: selected)
@@ -166,7 +174,7 @@ struct NVChip: View {
 struct NVTag: View {
     let text: String
     var icon: String?
-    var tint: Color = NV.inkSoft
+    var tint: Color = NV.inkSecondary
     var filled = false
 
     var body: some View {
@@ -233,13 +241,13 @@ struct NVEmptyState: View {
                 .foregroundStyle(NV.ink)
             Text(message)
                 .font(NV.small)
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
                 .multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
             if let actionTitle, let action {
                 Button(actionTitle, action: action)
                     .font(NV.bodyStrong)
-                    .foregroundStyle(NV.accent)
+                    .foregroundStyle(NV.spark)
                     .padding(.top, NV.Space.xs)
             }
         }
@@ -258,7 +266,7 @@ struct NVStepBar: View {
         HStack(spacing: 4) {
             ForEach(0..<total, id: \.self) { i in
                 Capsule()
-                    .fill(i <= step ? NV.accent : NV.track)
+                    .fill(i <= step ? NV.spark : NV.track)
                     .frame(height: 3)
             }
         }
@@ -270,7 +278,7 @@ struct NVStepBar: View {
 
 struct NVProgressBar: View {
     let value: Double
-    var tint: Color = NV.accent
+    var tint: Color = NV.spark
     var height: CGFloat = 6
 
     var body: some View {
@@ -299,14 +307,14 @@ struct NVSectionHeader: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(NV.h2).foregroundStyle(NV.ink)
                 if let subtitle {
-                    Text(subtitle).font(NV.small).foregroundStyle(NV.inkFaint)
+                    Text(subtitle).font(NV.small).foregroundStyle(NV.inkTertiary)
                 }
             }
             Spacer(minLength: NV.Space.s)
             if let action {
                 Button(action.title, action: action.run)
                     .font(NV.small.weight(.semibold))
-                    .foregroundStyle(NV.accent)
+                    .foregroundStyle(NV.spark)
             }
         }
     }

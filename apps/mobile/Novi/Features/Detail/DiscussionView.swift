@@ -28,7 +28,7 @@ struct DiscussionView: View {
                 comments
                 Spacer(minLength: 90)
             }
-            .padding(.horizontal, NV.Space.l)
+            .padding(.horizontal, NV.pageMargin)
             .padding(.top, NV.Space.m)
         }
         .background(NV.page)
@@ -43,13 +43,13 @@ struct DiscussionView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
             HStack(spacing: 6) {
-                NVTag(text: discussion.community, icon: "person.2", tint: NV.accent)
+                NVTag(text: discussion.community, icon: "person.2", tint: NV.spark)
                 if discussion.isSample {
-                    NVTag(text: "Sample", tint: NV.inkFaint)
+                    NVTag(text: "Sample", tint: NV.inkTertiary)
                 }
                 Spacer(minLength: 0)
                 Label(nv_count(discussion.upvotes), systemImage: "arrow.up")
-                    .font(NV.caption).foregroundStyle(NV.inkFaint)
+                    .font(NV.caption).foregroundStyle(NV.inkTertiary)
             }
             Text(displayTitle)
                 .font(NV.h2)
@@ -57,7 +57,7 @@ struct DiscussionView: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text("Posted by \(discussion.author)")
                 .font(NV.caption)
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
         }
     }
 
@@ -92,10 +92,10 @@ struct DiscussionView: View {
             }
             Text(title).font(NV.small.weight(.medium))
         }
-        .foregroundStyle(NV.accent)
+        .foregroundStyle(NV.spark)
         .padding(.horizontal, NV.Space.m)
         .padding(.vertical, 9)
-        .background(NV.accentSoft, in: Capsule())
+        .background(NV.sparkSoft, in: Capsule())
     }
 
     private func summaryCard(_ summary: SummaryDTO) -> some View {
@@ -104,7 +104,7 @@ struct DiscussionView: View {
                 Image(systemName: "sparkles").font(.system(size: 11, weight: .semibold))
                 Text("WHAT THIS THREAD SAYS").font(NV.caption)
             }
-            .foregroundStyle(NV.accent)
+            .foregroundStyle(NV.spark)
 
             bullets("Main ideas", summary.mainIdeas)
             bullets("What people agree on", summary.agreement)
@@ -118,7 +118,7 @@ struct DiscussionView: View {
     }
 
     @ViewBuilder
-    private func bullets(_ title: String, _ items: [String]?, tint: Color = NV.inkFaint) -> some View {
+    private func bullets(_ title: String, _ items: [String]?, tint: Color = NV.inkTertiary) -> some View {
         if let items, !items.isEmpty {
             VStack(alignment: .leading, spacing: 5) {
                 Text(title).font(NV.caption).foregroundStyle(tint)
@@ -158,16 +158,16 @@ struct DiscussionView: View {
     private var comments: some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
             Text("\(discussion.comments.count) REPLIES")
-                .font(NV.caption).foregroundStyle(NV.inkFaint)
+                .font(NV.caption).foregroundStyle(NV.inkTertiary)
 
             ForEach(Array(discussion.comments.enumerated()), id: \.element.id) { index, comment in
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Avatar(name: comment.author, size: 18)
-                        Text(comment.author).font(NV.caption).foregroundStyle(NV.inkSoft)
+                        Text(comment.author).font(NV.caption).foregroundStyle(NV.inkSecondary)
                         Spacer(minLength: 0)
                         Label(nv_count(comment.upvotes), systemImage: "arrow.up")
-                            .font(NV.caption).foregroundStyle(NV.inkFaint)
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
                     }
                     Text(commentText(at: index, fallback: comment.body))
                         .font(NV.small)

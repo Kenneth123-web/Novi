@@ -39,14 +39,29 @@ enum Demo {
     /// `-demoSearch photosynthesis` — open Explore with results on screen.
     static var search: String? { d.string(forKey: "demoSearch") }
 
+    /// `-demoHoldIntro YES` — run the opening and then STOP on its finished
+    /// frame instead of handing off. The sequence is under two seconds, which
+    /// is shorter than a `simctl` screenshot round trip, so without this the
+    /// opening is the one screen that cannot be captured.
+    static var holdIntro: Bool { d.bool(forKey: "demoHoldIntro") }
+
+    /// `-demoSkipIntro YES` — go straight past the opening animation.
+    /// Without it every automated screenshot catches the intro rather than
+    /// the screen it was aimed at.
+    static var skipIntro: Bool { d.bool(forKey: "demoSkipIntro") }
+
     /// Launch arguments live in UserDefaults for the whole process, so a
     /// `.task`-driven route re-fires every time its view reappears — i.e. on
-    /// every back tap. A `static` flag, not `@State`, which a tab switch
-    /// would reset.
-    private static var fired = false
-    static func once(_ body: () -> Void) {
-        guard !fired else { return }
-        fired = true
+    /// every back tap. `static`, not `@State`, which a tab switch would reset.
+    ///
+    /// Keyed, because there is more than one of these. A single shared latch
+    /// meant whichever screen's `.task` ran first consumed it and the other
+    /// never fired at all — `-demoSearch` and `-demoQuestion` could not both
+    /// work, and neither could be relied on alone.
+    private static var fired: Set<String> = []
+    static func once(_ key: String, _ body: () -> Void) {
+        guard !fired.contains(key) else { return }
+        fired.insert(key)
         body()
     }
 }

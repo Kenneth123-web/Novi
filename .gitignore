@@ -28,3 +28,8 @@ __pycache__/
 .run/
 
 .DS_Store
+
+# Seeded design-canvas payload — regenerate from the .dc.html sources with
+# the design skill's seed helper rather than tracking 2MB of editor code.
+design/canvas/*-canvas.html
+design/canvas/novi-ui-system.html

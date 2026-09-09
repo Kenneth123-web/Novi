@@ -55,6 +55,28 @@ The simulator shares the host's loopback, so the app finds the API at
 `127.0.0.1:8000` with no configuration. A device build needs the host's LAN
 address — pass `-apiBaseURL http://192.168.x.x:8000/v1`.
 
+## Design
+
+The visual system is ported from the Travelers app's: a long neutral ink
+scale carries the hierarchy, the page is a near-white that is not the card
+white, radii are generous (28pt hero, 20pt card), and Instrument Sans (SIL
+Open Font License) is bundled rather than left to the system face.
+
+One rule does most of the work: **the accent is not the button colour.**
+Primary actions are near-black. Violet appears in three places — Ask, an
+active state, an earned stamp — which is the whole reason it reads as meaning
+rather than decoration. Adding it to a second kind of control undoes this.
+
+The opening is an animated mark: six nodes appear in sequence and the edges
+between them draw themselves. The mark is the product's own data structure —
+a concept graph — so it is the thesis rather than a logo.
+`-demoHoldIntro YES` stops on the finished frame, because the sequence is
+shorter than a `simctl` screenshot round trip and is otherwise the one screen
+that cannot be captured.
+
+Screen mockups live in `design/canvas/` as a Claude Design canvas; re-seed
+them with the helper and republish to update the shared link.
+
 ## Checks
 
 ```bash
@@ -122,6 +144,8 @@ actually looked at.
 xcrun simctl launch <UDID> luke.novi.app \
   -demoResetSession YES                        # forget stored tokens → sign-in
   -demoEmail a@example.com -demoPassword ...   # sign in on launch, for real
+  -demoSkipIntro YES                           # straight past the opening
+  -demoHoldIntro YES                           # stop on the opening's last frame
   -demoTab home|explore|ask|passport|profile
   -demoQuestion "why does a derivative represent slope"
   -demoSearch photosynthesis

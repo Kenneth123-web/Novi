@@ -1,0 +1,12 @@
+{
+  "artboards": [
+    { "file": "Launch.dc.html", "x": 0, "y": 0, "w": 390, "h": 844, "title": "Launch" },
+    { "file": "Main.dc.html", "x": 490, "y": 0, "w": 390, "h": 844, "title": "Home — For you" },
+    { "file": "Ask.dc.html", "x": 980, "y": 0, "w": 390, "h": 844, "title": "Ask — answer" },
+    { "file": "Passport.dc.html", "x": 1470, "y": 0, "w": 390, "h": 844, "title": "Passport" }
+  ],
+  "annotations": [
+    { "id": "note-system", "x": 0, "y": -150, "w": 560, "text": "Novi, rebuilt on the Travelers vocabulary.\n\nInstrument Sans · 24pt page margin · 28/20pt card radii · hairline borders at 8% ink · one accent (#5B4BFF) used only where the product is doing something for you: Ask, active state, an earned stamp. Primary actions are near-black, not accent — the accent stays rare enough to mean something." }
+  ],
+  "launch": { "view": "canvas" }
+}

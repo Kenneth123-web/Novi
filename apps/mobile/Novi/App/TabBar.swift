@@ -85,14 +85,14 @@ struct TabBar: View {
                     .frame(width: 52, height: 32)
                     .background(
                         LinearGradient(
-                            colors: [NV.accent, NV.accentDeep],
+                            colors: [NV.spark, NV.sparkDeep],
                             startPoint: .topLeading, endPoint: .bottomTrailing
                         ),
                         in: RoundedRectangle(cornerRadius: 11, style: .continuous)
                     )
                 Text(RootTab.ask.title)
                     .font(.system(size: 10, weight: tab == .ask ? .semibold : .medium))
-                    .foregroundStyle(tab == .ask ? NV.accent : NV.inkFaint)
+                    .foregroundStyle(tab == .ask ? NV.spark : NV.inkTertiary)
             }
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
@@ -111,7 +111,7 @@ struct TabBar: View {
                 Text(t.title)
                     .font(.system(size: 10, weight: on ? .semibold : .medium))
             }
-            .foregroundStyle(on ? NV.ink : NV.inkFaint)
+            .foregroundStyle(on ? NV.ink : NV.inkTertiary)
             .frame(maxWidth: .infinity)
             .contentShape(.rect)
         }

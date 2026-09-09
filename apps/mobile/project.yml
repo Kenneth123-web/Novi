@@ -35,6 +35,11 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleDefault
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIUserInterfaceStyle: Light
+        # Instrument Sans (SIL Open Font License). Registered here rather than
+        # loaded at runtime: UIAppFonts is read once at launch, so a face named
+        # in code but missing from this list silently falls back to the system
+        # font and the whole type ramp shifts.
+        UIAppFonts: [InstrumentSans.ttf]
         # Loopback only. A blanket NSAllowsArbitraryLoads would ship as "this
         # app accepts any plaintext HTTP", which is both a review question and
         # untrue: every other host it talks to is HTTPS.

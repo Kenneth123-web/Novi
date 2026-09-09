@@ -39,7 +39,7 @@ struct AskView: View {
                             emptyState
                         }
                     }
-                    .padding(.horizontal, NV.Space.l)
+                    .padding(.horizontal, NV.pageMargin)
                     .padding(.top, NV.Space.m)
                     .padding(.bottom, NV.Space.section)
                 }
@@ -85,7 +85,7 @@ struct AskView: View {
                     .foregroundStyle(NV.ink)
                 Text("Ask in your own words. Half-formed is fine.")
                     .font(NV.small)
-                    .foregroundStyle(NV.inkFaint)
+                    .foregroundStyle(NV.inkTertiary)
             }
             .padding(.top, NV.Space.xl)
 
@@ -140,7 +140,7 @@ struct AskView: View {
             .cardSurface()
             HStack(spacing: NV.Space.s) {
                 ProgressView().controlSize(.small)
-                Text("Thinking it through…").font(NV.small).foregroundStyle(NV.inkFaint)
+                Text("Thinking it through…").font(NV.small).foregroundStyle(NV.inkTertiary)
             }
         }
         .padding(.top, NV.Space.l)
@@ -165,10 +165,10 @@ struct AskView: View {
                             .font(NV.h3).foregroundStyle(NV.ink)
                     }
                     Text(error.message)
-                        .font(NV.small).foregroundStyle(NV.inkSoft)
+                        .font(NV.small).foregroundStyle(NV.inkSecondary)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("Search and your feed still work — you can look the topic up while this comes back.")
-                        .font(NV.small).foregroundStyle(NV.inkFaint)
+                        .font(NV.small).foregroundStyle(NV.inkTertiary)
                         .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: NV.Space.s) {
                         NVButton(title: "Try again", kind: .secondary) {
@@ -212,7 +212,7 @@ struct AskView: View {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, NV.Space.l)
+                    .padding(.horizontal, NV.pageMargin)
                 }
             }
 
@@ -232,13 +232,13 @@ struct AskView: View {
                         .font(.system(size: 15, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 38, height: 38)
-                        .background(canSend ? NV.accent : NV.inkGhost, in: Circle())
+                        .background(canSend ? NV.spark : NV.inkGhost, in: Circle())
                 }
                 .buttonStyle(.plain)
                 .disabled(!canSend)
                 .animation(.easeOut(duration: 0.15), value: canSend)
             }
-            .padding(.horizontal, NV.Space.l)
+            .padding(.horizontal, NV.pageMargin)
         }
         .padding(.top, NV.Space.m)
         // Clears the tab bar, which is an overlay: without this the composer

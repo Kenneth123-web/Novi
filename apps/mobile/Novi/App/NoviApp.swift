@@ -11,7 +11,7 @@ struct NoviApp: App {
                 // Light only for now. A dark variant is a second palette to
                 // keep honest, and every screen would need checking against it.
                 .preferredColorScheme(.light)
-                .tint(NV.accent)
+                .tint(NV.spark)
         }
     }
 }

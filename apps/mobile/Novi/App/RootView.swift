@@ -1,34 +1,52 @@
 import SwiftUI
 
-/// The three shells the app can be in, and nothing else.
+/// The three shells the app can be in, with the opening played over the top.
+///
+/// The intro is an OVERLAY rather than a fourth case, so the destination is
+/// already laid out and rendered underneath while the animation runs. Fading
+/// the overlay then reveals real content continuously, instead of exposing the
+/// window's base colour for a frame while the next screen builds itself.
+///
+/// The gate is deliberately `introDone && phase != .launching`: whichever of
+/// the animation and the stored-token check finishes last is what the user
+/// waits for, and neither can skip ahead of the other.
 struct RootView: View {
     @EnvironmentObject private var session: AppSession
 
-    var body: some View {
-        Group {
-            switch session.phase {
-            case .launching: LaunchView()
-            case .signedOut: AuthView()
-            case .onboarding: OnboardingView()
-            case .ready: MainTabs()
-            }
-        }
-        .animation(.easeOut(duration: 0.25), value: session.phase)
-        .task { await session.start() }
-    }
-}
+    @State private var introDone = false
 
-/// Held for the moment it takes to check the stored token. Deliberately just
-/// the wordmark: a spinner here flashes for 40ms on a warm launch and reads as
-/// jank.
-private struct LaunchView: View {
+    private var ready: Bool {
+        if case .launching = session.phase { return false }
+        return introDone
+    }
+
     var body: some View {
         ZStack {
-            NV.surface.ignoresSafeArea()
-            Text("Novi")
-                .font(.system(size: 36, weight: .bold))
-                .foregroundStyle(NV.accent)
+            Group {
+                switch session.phase {
+                case .launching:
+                    // Nothing behind the intro yet. Painted rather than empty
+                    // so the fade has something to land on.
+                    NV.page.ignoresSafeArea()
+                case .signedOut:
+                    AuthView()
+                case .onboarding:
+                    OnboardingView()
+                case .ready:
+                    MainTabs()
+                }
+            }
+            .opacity(ready ? 1 : 0)
+
+            if !introDone {
+                LaunchIntroView { introDone = true }
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
         }
+        .animation(.easeOut(duration: 0.28), value: ready)
+        .animation(.easeOut(duration: 0.25), value: session.phase)
+        .task { await session.start() }
     }
 }
 
@@ -41,9 +59,9 @@ struct MainTabs: View {
     /// body re-run here tears down whatever a nested stack has pushed.
     @State private var chrome = Chrome()
 
-    /// Set when something elsewhere wants the Ask tab opened with a question
-    /// already in it — "I have a question" on a content page, or a concept
-    /// tapped in the passport.
+    /// Set when something elsewhere wants Ask opened with a question already
+    /// in it — "I have a question" on a content page, or a concept tapped in
+    /// the passport.
     @State private var askSeed: AskSeed?
 
     var body: some View {
@@ -71,7 +89,7 @@ struct MainTabs: View {
         .ignoresSafeArea(.keyboard)
         .task {
             await session.loadSubjects()
-            Demo.once {
+            Demo.once("ask") {
                 if let question = Demo.question {
                     openAsk(AskSeed(question: question))
                 }

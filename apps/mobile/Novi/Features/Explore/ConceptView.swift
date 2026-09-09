@@ -24,7 +24,7 @@ struct ConceptView: View {
                 if let next = detail?.next, !next.isEmpty { whereNext(next) }
                 Spacer(minLength: 90)
             }
-            .padding(.horizontal, NV.Space.l)
+            .padding(.horizontal, NV.pageMargin)
             .padding(.top, NV.Space.m)
         }
         .background(NV.page)
@@ -41,7 +41,7 @@ struct ConceptView: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
             if let subject = detail?.subject {
-                NVTag(text: subject.name, icon: subject.icon, tint: NV.accent)
+                NVTag(text: subject.name, icon: subject.icon, tint: NV.spark)
             }
             Text(detail?.concept.name ?? fallbackName)
                 .font(NV.h1)
@@ -51,12 +51,12 @@ struct ConceptView: View {
                 HStack(spacing: 4) {
                     ForEach(1...5, id: \.self) { level in
                         Capsule()
-                            .fill(level <= difficulty ? NV.accent : NV.track)
+                            .fill(level <= difficulty ? NV.spark : NV.track)
                             .frame(width: 18, height: 3)
                     }
                     Text(difficultyLabel(difficulty))
                         .font(NV.caption)
-                        .foregroundStyle(NV.inkFaint)
+                        .foregroundStyle(NV.inkTertiary)
                         .padding(.leading, 4)
                 }
             }
@@ -94,7 +94,7 @@ struct ConceptView: View {
 
     private func whereNext(_ next: [ConceptDTO]) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
-            Text("WHERE THIS LEADS").font(NV.caption).foregroundStyle(NV.inkFaint)
+            Text("WHERE THIS LEADS").font(NV.caption).foregroundStyle(NV.inkTertiary)
             ForEach(next) { concept in
                 NavigationLink(value: RelatedConceptDTO(
                     name: concept.name, id: concept.id.uuidString, slug: concept.slug
@@ -102,9 +102,9 @@ struct ConceptView: View {
                     HStack(spacing: NV.Space.m) {
                         Text("\(concept.difficulty)")
                             .font(NV.caption.weight(.bold))
-                            .foregroundStyle(NV.accent)
+                            .foregroundStyle(NV.spark)
                             .frame(width: 26, height: 26)
-                            .background(NV.accentSoft, in: Circle())
+                            .background(NV.sparkSoft, in: Circle())
                         Text(concept.name).font(NV.bodyStrong).foregroundStyle(NV.ink)
                         Spacer(minLength: 0)
                         Image(systemName: "chevron.right")

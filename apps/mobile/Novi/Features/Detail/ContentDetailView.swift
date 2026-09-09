@@ -27,10 +27,10 @@ struct ContentDetailView: View {
                     if !detail.content.description.isEmpty {
                         Text(detail.content.description)
                             .font(NV.body)
-                            .foregroundStyle(NV.inkSoft)
+                            .foregroundStyle(NV.inkSecondary)
                             .lineSpacing(3)
                             .fixedSize(horizontal: false, vertical: true)
-                            .padding(.horizontal, NV.Space.l)
+                            .padding(.horizontal, NV.pageMargin)
                     }
                     if !detail.concepts.isEmpty { concepts(detail) }
                     if !detail.related.isEmpty { related(detail) }
@@ -55,7 +55,7 @@ struct ContentDetailView: View {
                     }
                     Button { toggleSave() } label: {
                         Image(systemName: saved ? "bookmark.fill" : "bookmark")
-                            .foregroundStyle(saved ? NV.accent : NV.ink)
+                            .foregroundStyle(saved ? NV.spark : NV.ink)
                     }
                 }
             }
@@ -103,12 +103,12 @@ struct ContentDetailView: View {
                         Text(content.topic)
                     }
                     .font(NV.caption)
-                    .foregroundStyle(NV.inkFaint)
+                    .foregroundStyle(NV.inkTertiary)
                 }
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, NV.Space.l)
+        .padding(.horizontal, NV.pageMargin)
     }
 
     private func askButton(_ detail: ContentDetailDTO) -> some View {
@@ -139,17 +139,17 @@ struct ContentDetailView: View {
                 } label: {
                     Text("or explain \(concept.name) simply")
                         .font(NV.small)
-                        .foregroundStyle(NV.accent)
+                        .foregroundStyle(NV.spark)
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, NV.Space.l)
+        .padding(.horizontal, NV.pageMargin)
     }
 
     private func concepts(_ detail: ContentDetailDTO) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
-            Text("CONCEPTS IN THIS").font(NV.caption).foregroundStyle(NV.inkFaint)
+            Text("CONCEPTS IN THIS").font(NV.caption).foregroundStyle(NV.inkTertiary)
             FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                 ForEach(detail.concepts) { concept in
                     NavigationLink(value: RelatedConceptDTO(
@@ -159,22 +159,22 @@ struct ContentDetailView: View {
                             Text(concept.name).font(NV.small.weight(.medium))
                             Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold))
                         }
-                        .foregroundStyle(NV.accent)
+                        .foregroundStyle(NV.spark)
                         .padding(.horizontal, NV.Space.m)
                         .padding(.vertical, 8)
-                        .background(NV.accentSoft, in: Capsule())
+                        .background(NV.sparkSoft, in: Capsule())
                     }
                     .buttonStyle(.plain)
                 }
             }
         }
-        .padding(.horizontal, NV.Space.l)
+        .padding(.horizontal, NV.pageMargin)
     }
 
     private func related(_ detail: ContentDetailDTO) -> some View {
         VStack(alignment: .leading, spacing: NV.Space.s) {
-            Text("MORE ON THIS").font(NV.caption).foregroundStyle(NV.inkFaint)
-                .padding(.horizontal, NV.Space.l)
+            Text("MORE ON THIS").font(NV.caption).foregroundStyle(NV.inkTertiary)
+                .padding(.horizontal, NV.pageMargin)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: NV.Space.m) {
                     ForEach(detail.related) { item in
@@ -185,7 +185,7 @@ struct ContentDetailView: View {
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, NV.Space.l)
+                .padding(.horizontal, NV.pageMargin)
             }
         }
     }
@@ -198,8 +198,8 @@ struct ContentDetailView: View {
                 NVSkeleton(height: 22, width: 200)
                 NVSkeleton(height: 14, width: 140)
             }
-            .padding(.horizontal, NV.Space.l)
-            NVSkeleton(height: 50).padding(.horizontal, NV.Space.l)
+            .padding(.horizontal, NV.pageMargin)
+            NVSkeleton(height: 50).padding(.horizontal, NV.pageMargin)
         }
     }
 

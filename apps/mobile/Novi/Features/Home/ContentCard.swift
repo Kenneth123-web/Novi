@@ -19,6 +19,7 @@ struct ContentCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(content.title)
                         .font(NV.cardTitle)
+                        .lineSpacing(1)
                         .foregroundStyle(NV.ink)
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
@@ -32,6 +33,11 @@ struct ContentCard: View {
             }
             .background(NV.surface)
             .clipShape(RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous))
+            // Two shadows, not one. A single soft shadow reads as blur; a
+            // tight contact shadow plus a wide ambient one is what makes a
+            // card look like it is resting on the page.
+            .shadow(color: NV.ink900.opacity(0.04), radius: 1, x: 0, y: 1)
+            .shadow(color: NV.ink900.opacity(0.05), radius: 12, x: 0, y: 8)
         }
         .buttonStyle(.plain)
     }
@@ -70,7 +76,7 @@ struct ContentCard: View {
             Avatar(name: content.creator, size: 15)
             Text(content.creator)
                 .font(NV.cardMeta)
-                .foregroundStyle(NV.inkFaint)
+                .foregroundStyle(NV.inkTertiary)
                 .lineLimit(1)
             Spacer(minLength: 2)
             // The heart is the count's label; the bookmark is a control. They
@@ -82,12 +88,12 @@ struct ContentCard: View {
                 Text(nv_count(content.likes))
                     .font(NV.cardMeta)
             }
-            .foregroundStyle(NV.inkFaint)
+            .foregroundStyle(NV.inkTertiary)
 
             Button(action: onSave) {
                 Image(systemName: item.isSaved ? "bookmark.fill" : "bookmark")
                     .font(.system(size: 11.5, weight: .medium))
-                    .foregroundStyle(item.isSaved ? NV.accent : NV.inkFaint)
+                    .foregroundStyle(item.isSaved ? NV.spark : NV.inkTertiary)
             }
             .buttonStyle(.plain)
         }

@@ -41,7 +41,7 @@ struct QuizView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button("Close") { dismiss() }.foregroundStyle(NV.inkSoft)
+                    Button("Close") { dismiss() }.foregroundStyle(NV.inkSecondary)
                 }
             }
         }
@@ -53,7 +53,7 @@ struct QuizView: View {
             Spacer()
             ProgressView().controlSize(.large)
             Text("Writing your questions…")
-                .font(NV.small).foregroundStyle(NV.inkFaint)
+                .font(NV.small).foregroundStyle(NV.inkTertiary)
             Spacer()
         }
     }
@@ -76,12 +76,12 @@ struct QuizView: View {
         let question = quiz.questions[index]
         return VStack(alignment: .leading, spacing: NV.Space.l) {
             NVStepBar(step: index, total: quiz.questions.count)
-                .padding(.horizontal, NV.Space.l)
+                .padding(.horizontal, NV.pageMargin)
 
             ScrollView {
                 VStack(alignment: .leading, spacing: NV.Space.l) {
                     Text("Question \(index + 1) of \(quiz.questions.count)")
-                        .font(NV.caption).foregroundStyle(NV.inkFaint)
+                        .font(NV.caption).foregroundStyle(NV.inkTertiary)
                     Text(question.prompt)
                         .font(NV.h2)
                         .foregroundStyle(NV.ink)
@@ -93,7 +93,7 @@ struct QuizView: View {
                         }
                     }
                 }
-                .padding(.horizontal, NV.Space.l)
+                .padding(.horizontal, NV.pageMargin)
                 .padding(.top, NV.Space.s)
             }
 
@@ -108,7 +108,7 @@ struct QuizView: View {
                     withAnimation { index += 1 }
                 }
             }
-            .padding(.horizontal, NV.Space.l)
+            .padding(.horizontal, NV.pageMargin)
             .padding(.bottom, NV.Space.l)
         }
     }
@@ -121,9 +121,9 @@ struct QuizView: View {
             HStack(spacing: NV.Space.m) {
                 Text(["A", "B", "C", "D"][min(i, 3)])
                     .font(NV.caption.weight(.bold))
-                    .foregroundStyle(selected ? .white : NV.inkFaint)
+                    .foregroundStyle(selected ? .white : NV.inkTertiary)
                     .frame(width: 26, height: 26)
-                    .background(selected ? NV.accent : NV.fill, in: Circle())
+                    .background(selected ? NV.spark : NV.fill, in: Circle())
                 Text(option)
                     .font(NV.body)
                     .foregroundStyle(NV.ink)
@@ -136,7 +136,7 @@ struct QuizView: View {
             .cardSurface(NV.Radius.control)
             .overlay {
                 RoundedRectangle(cornerRadius: NV.Radius.control, style: .continuous)
-                    .stroke(selected ? NV.accent : NV.hairline, lineWidth: selected ? 1.5 : 1)
+                    .stroke(selected ? NV.spark : NV.hairline, lineWidth: selected ? 1.5 : 1)
             }
         }
         .buttonStyle(.plain)
@@ -200,7 +200,7 @@ private struct ResultView: View {
                 if !result.newStamps.isEmpty { stamps }
 
                 VStack(alignment: .leading, spacing: NV.Space.s) {
-                    Text("REVIEW").font(NV.caption).foregroundStyle(NV.inkFaint)
+                    Text("REVIEW").font(NV.caption).foregroundStyle(NV.inkTertiary)
                     ForEach(Array(result.answers.enumerated()), id: \.element.id) { i, answer in
                         answerRow(i, answer)
                     }
@@ -216,13 +216,13 @@ private struct ResultView: View {
         VStack(spacing: NV.Space.s) {
             Text("\(Int(result.score * 100))%")
                 .font(.system(size: 52, weight: .bold))
-                .foregroundStyle(result.score >= 0.8 ? NV.success : NV.accent)
+                .foregroundStyle(result.score >= 0.8 ? NV.success : NV.spark)
             Text("\(result.correct) of \(result.total) correct")
-                .font(NV.body).foregroundStyle(NV.inkSoft)
+                .font(NV.body).foregroundStyle(NV.inkSecondary)
 
             NVProgressBar(
                 value: result.score,
-                tint: result.score >= 0.8 ? NV.success : NV.accent,
+                tint: result.score >= 0.8 ? NV.success : NV.spark,
                 height: 8
             )
             .padding(.horizontal, NV.Space.xxl)
@@ -241,7 +241,7 @@ private struct ResultView: View {
 
     private var stamps: some View {
         VStack(spacing: NV.Space.s) {
-            Text("ADDED TO YOUR PASSPORT").font(NV.caption).foregroundStyle(NV.accent)
+            Text("ADDED TO YOUR PASSPORT").font(NV.caption).foregroundStyle(NV.spark)
             HStack(spacing: NV.Space.m) {
                 ForEach(result.newStamps) { stamp in
                     StampBadge(
@@ -252,7 +252,7 @@ private struct ResultView: View {
         }
         .padding(NV.Space.l)
         .frame(maxWidth: .infinity)
-        .background(NV.accentSoft,
+        .background(NV.sparkSoft,
                     in: RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous))
     }
 
@@ -261,7 +261,7 @@ private struct ResultView: View {
             HStack(spacing: 6) {
                 Image(systemName: answer.isCorrect ? "checkmark.circle.fill" : "xmark.circle.fill")
                     .foregroundStyle(answer.isCorrect ? NV.success : NV.error)
-                Text("Question \(i + 1)").font(NV.caption).foregroundStyle(NV.inkFaint)
+                Text("Question \(i + 1)").font(NV.caption).foregroundStyle(NV.inkTertiary)
                 Spacer(minLength: 0)
                 if !answer.isCorrect {
                     Text("Answer: \(["A", "B", "C", "D"][min(answer.correctIndex, 3)])")
@@ -288,7 +288,7 @@ struct StampBadge: View {
     let title: String
     var subtitle: String = ""
     var icon: String = "seal"
-    var tint: Color = NV.accent
+    var tint: Color = NV.spark
 
     var body: some View {
         VStack(spacing: 4) {

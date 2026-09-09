@@ -17,7 +17,11 @@ struct HomeView: View {
         NavigationStack(path: $path) {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: NV.Space.l) {
-                    greeting
+                    header
+
+                    if let item = model.continueItem {
+                        continueStrip(item)
+                    }
 
                     if model.loading && model.items.isEmpty {
                         skeleton
@@ -52,24 +56,101 @@ struct HomeView: View {
         }
     }
 
-    private var greeting: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(timeOfDayGreeting)
+    /// The header. Display type, a generous margin, and no chrome — the
+    /// screen opens on the learner's name and their own momentum rather than
+    /// on a toolbar.
+    private var header: some View {
+        VStack(alignment: .leading, spacing: NV.Space.xs) {
+            Text(dayLabel)
                 .font(NV.small)
-                .foregroundStyle(NV.inkFaint)
-            Text("For You")
-                .font(NV.display)
-                .foregroundStyle(NV.ink)
+                .foregroundStyle(NV.inkTertiary)
+
+            HStack(alignment: .lastTextBaseline) {
+                Text(greetingTitle)
+                    .displayStyle(34)
+                    .foregroundStyle(NV.ink)
+                Spacer(minLength: NV.Space.s)
+                if model.streak > 1 { streakChip }
+            }
         }
-        .padding(.horizontal, NV.gutter + 4)
+        .padding(.horizontal, NV.pageMargin)
         .padding(.top, NV.Space.s)
     }
 
-    private var timeOfDayGreeting: String {
-        let name = session.user?.displayName ?? ""
-        let hour = Calendar.current.component(.hour, from: Date())
-        let part = hour < 12 ? "Good morning" : (hour < 18 ? "Good afternoon" : "Good evening")
-        return name.isEmpty ? part : "\(part), \(name)"
+    private var dayLabel: String {
+        let f = DateFormatter()
+        f.dateFormat = "EEEE"
+        return f.string(from: Date())
+    }
+
+    private var greetingTitle: String {
+        // "For you" is the section, not a greeting. The name goes in the line
+        // above so the display step stays a constant width and does not jump
+        // between a two-letter name and a twelve-letter one.
+        "For you"
+    }
+
+    private var streakChip: some View {
+        HStack(spacing: 5) {
+            Image(systemName: "flame.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(NV.spark)
+            Text("\(model.streak) day streak")
+                .font(NV.caption)
+                .foregroundStyle(NV.ink)
+        }
+        .padding(.horizontal, 11)
+        .padding(.vertical, 6)
+        .edgedSurface(NV.Radius.pill)
+    }
+
+    /// Pick up where you left off. One wide card above the grid, because the
+    /// single most useful thing on this screen is the thing the learner was
+    /// already part-way through — and a masonry gives nothing priority.
+    @ViewBuilder
+    private func continueStrip(_ item: ContinueItem) -> some View {
+        Button {
+            onAsk(AskSeed(question: "Explain \(item.name)", conceptID: item.id))
+        } label: {
+            HStack(spacing: NV.Space.m) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: NV.Radius.thumb, style: .continuous)
+                        .fill(
+                            LinearGradient(
+                                colors: [NV.spark, NV.horizon],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
+                            )
+                        )
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                }
+                .frame(width: 52, height: 52)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("CONTINUE")
+                        .font(.system(size: 10.5, weight: .bold))
+                        .tracking(0.8)
+                        .foregroundStyle(NV.spark)
+                    Text(item.name)
+                        .font(NV.h3)
+                        .foregroundStyle(NV.ink)
+                        .lineLimit(1)
+                    HStack(spacing: NV.Space.s) {
+                        NVProgressBar(value: item.progress, tint: NV.ink900, height: 5)
+                        Text(item.mastery.capitalized)
+                            .font(NV.cardMeta)
+                            .foregroundStyle(NV.inkTertiary)
+                            .fixedSize()
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(NV.Space.l)
+            .cardSurface(NV.Radius.hero)
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, NV.pageMargin)
     }
 
     private var feed: some View {
@@ -115,11 +196,21 @@ struct HomeView: View {
 
 /// Feed state. A class rather than `@State` because paging, refresh and the
 /// optimistic save toggle all mutate the same list and have to stay ordered.
+/// What the learner was part-way through.
+struct ContinueItem: Equatable {
+    let id: UUID
+    let name: String
+    let mastery: String
+    let progress: Double
+}
+
 @MainActor
 final class FeedModel: ObservableObject {
     @Published private(set) var items: [FeedItemDTO] = []
     @Published private(set) var loading = false
     @Published private(set) var error: APIError?
+    @Published private(set) var streak = 0
+    @Published private(set) var continueItem: ContinueItem?
 
     private var session: AppSession?
     private var offset = 0
@@ -136,6 +227,9 @@ final class FeedModel: ObservableObject {
 
     func reload() async {
         guard let session else { return }
+        // Fired alongside the feed rather than before it: the header can
+        // arrive a moment late, but the grid is what the screen is for.
+        Task { await loadHeader() }
         loading = true
         error = nil
         offset = 0
@@ -154,6 +248,73 @@ final class FeedModel: ObservableObject {
             self.error = APIError.transport(error)
         }
         loading = false
+    }
+
+    /// Streak and "continue", both derived from endpoints that already exist.
+    ///
+    /// Neither needs a new route: a streak is consecutive days in the activity
+    /// history, and the thing to continue is the most recently touched concept
+    /// that is not finished yet. Adding server fields for two numbers the
+    /// client can count would have been the wrong trade.
+    private func loadHeader() async {
+        guard let session else { return }
+
+        if let history: [HistoryDayDTO] = try? await session.api.authed(
+            .get, "me/history", query: ["days": "60"]
+        ) {
+            streak = Self.streakLength(from: history)
+        }
+
+        guard let passport: PassportDTO = try? await session.api.authed(.get, "passport") else {
+            return
+        }
+        // Ordered weak-to-strong, so "continue" offers the concept with the
+        // most left to do rather than the one nearest the finish.
+        let ladder = ["discovered", "viewed", "explored", "practiced", "learned", "mastered"]
+        let candidates = passport.subjectCards
+            .flatMap(\.concepts)
+            .filter { $0.mastery != "mastered" }
+            .compactMap { concept -> ContinueItem? in
+                guard let id = concept.conceptID,
+                      let rank = ladder.firstIndex(of: concept.mastery)
+                else { return nil }
+                return ContinueItem(
+                    id: id,
+                    name: concept.name,
+                    mastery: concept.mastery,
+                    progress: Double(rank) / Double(ladder.count - 1)
+                )
+            }
+        continueItem = candidates.max { $0.progress < $1.progress }
+    }
+
+    /// Consecutive days with activity, counting back from today.
+    ///
+    /// Today missing does not break a streak — it is not over yet — but
+    /// yesterday missing does. Without that allowance the streak reads zero
+    /// every morning until the learner opens something.
+    static func streakLength(from history: [HistoryDayDTO], now: Date = Date()) -> Int {
+        let calendar = Calendar.current
+        let active = Set(history.filter {
+            $0.content + $0.questions + $0.quizzes + $0.concepts > 0
+        }.map { calendar.startOfDay(for: $0.date) })
+        guard !active.isEmpty else { return 0 }
+
+        var day = calendar.startOfDay(for: now)
+        if !active.contains(day) {
+            guard let yesterday = calendar.date(byAdding: .day, value: -1, to: day) else {
+                return 0
+            }
+            day = yesterday
+        }
+
+        var count = 0
+        while active.contains(day) {
+            count += 1
+            guard let previous = calendar.date(byAdding: .day, value: -1, to: day) else { break }
+            day = previous
+        }
+        return count
     }
 
     func loadMoreIfNeeded(after item: FeedItemDTO) async {
