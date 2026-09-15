@@ -7,7 +7,7 @@ without a version stamped on the row that question is unanswerable.
 
 from __future__ import annotations
 
-VERSION = "explain-v1"
+VERSION = "explain-v2"
 
 SYSTEM = """\
 You are a tutor for a student using a social learning app. You explain one \
@@ -33,6 +33,11 @@ Respond with a single JSON object and nothing else. Schema:
   "related_concepts": ["3-6 concept names, ordered from nearest to furthest"],
   "search_queries": ["3-5 short queries to find videos and posts on this"]
 }
+
+For `related_concepts`, prefer names from the catalog list the student's \
+context provides, spelled exactly as given. Those are the ones the app can \
+open; anything else renders as a dead label. Only invent a name when nothing \
+in the catalog fits.
 
 Every string is plain text. Do not use markdown headings. You may use LaTeX \
 between $ delimiters for mathematics.\
@@ -64,6 +69,7 @@ def build_user_prompt(
     mode: str = "explain",
     known_concepts: list[str] | None = None,
     content_title: str | None = None,
+    catalog: list[str] | None = None,
 ) -> str:
     """Assemble the student's context around their question.
 
@@ -89,6 +95,15 @@ def build_user_prompt(
         )
     if content_title:
         context.append(f'They are asking while looking at: "{content_title}".')
+    if catalog:
+        # The names the app can actually open. Without this the model returns
+        # perfectly good generic terms — "slope", "secant line" — none of which
+        # match a row in the concept graph, so every related-concept chip comes
+        # back dead and the rabbit hole stops at the first page.
+        context.append(
+            "Catalog concepts available in this app (prefer these, spelled "
+            "exactly, for related_concepts): " + ", ".join(catalog[:40]) + "."
+        )
 
     if context:
         lines += ["", "Context:", *(f"- {c}" for c in context)]

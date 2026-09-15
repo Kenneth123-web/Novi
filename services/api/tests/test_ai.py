@@ -49,68 +49,88 @@ def fake_ai(monkeypatch: pytest.MonkeyPatch):
     return install
 
 
-# ── Gateway ──────────────────────────────────────────────────────────────────
+# ── Gateway transport ────────────────────────────────────────────────────────
+#
+# The protocol is a setting because it has to be: Grok answers on the OpenAI
+# path and refuses the Anthropic one, and the Claude roster was the other way
+# round. Both paths are covered, because picking the wrong one is silent — the
+# request just fails in a way that looks like an outage.
 
 
-def _messages_url() -> str:
-    return f"{get_settings().ai_base_url.rstrip('/')}/messages"
+def _url(protocol: str) -> str:
+    base = get_settings().ai_base_url.rstrip("/")
+    return f"{base}/messages" if protocol == "anthropic" else f"{base}/chat/completions"
 
 
-def _text_reply(text: str) -> dict:
-    """An Anthropic /v1/messages success body."""
+def _reply(protocol: str, text: str) -> dict:
+    """A success body in whichever shape the protocol returns."""
+    if protocol == "anthropic":
+        return {
+            "content": [{"type": "text", "text": text}],
+            "usage": {"input_tokens": 5, "output_tokens": 3},
+        }
     return {
-        "content": [{"type": "text", "text": text}],
-        "usage": {"input_tokens": 5, "output_tokens": 3},
+        "choices": [{"message": {"role": "assistant", "content": text}}],
+        "usage": {"prompt_tokens": 5, "completion_tokens": 3},
     }
 
 
+def _error(kind: str, message: str) -> dict:
+    return {"type": "error", "error": {"type": kind, "message": message}}
+
+
+@pytest.fixture
+def configured(monkeypatch: pytest.MonkeyPatch):
+    """Set the key and a protocol, and clear the settings cache either side."""
+
+    def install(protocol: str = "openai") -> str:
+        monkeypatch.setenv("AI_API_KEY", "test-key")
+        monkeypatch.setenv("AI_PROTOCOL", protocol)
+        get_settings.cache_clear()
+        return protocol
+
+    yield install
+    get_settings.cache_clear()
+
+
+@pytest.mark.parametrize("protocol", ["openai", "anthropic"])
 @respx.mock
-async def test_gateway_maps_capacity_errors_to_ai_unavailable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The exact failure the configured gateway returns today.
-
-    It must surface as AI_UNAVAILABLE, not as a 500: the app shows a "tutor is
-    unavailable" state and stays usable, rather than looking broken.
-    """
-    monkeypatch.setenv("AI_API_KEY", "test-key")
-    get_settings.cache_clear()
-
-    respx.post(_messages_url()).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "type": "error",
-                "error": {
-                    "type": "rate_limit_error",
-                    "message": "Upstream rate limit exceeded, please retry later",
-                },
-            },
-        )
+async def test_gateway_reads_either_protocols_reply(configured, protocol: str) -> None:
+    configured(protocol)
+    respx.post(_url(protocol)).mock(
+        return_value=httpx.Response(200, json=_reply(protocol, '{"summary": "ok"}'))
     )
-    with pytest.raises(AIUnavailable) as exc:
-        await AIGateway().complete_json(system="s", user="u")
 
-    assert exc.value.code == "AI_UNAVAILABLE"
-    assert exc.value.details["reason"] == "capacity"
-    # The upstream text is kept for the log, not for the student.
-    assert "rate limit" in exc.value.details["upstream"].lower()
-    get_settings.cache_clear()
+    result = await AIGateway().complete_json(system="s", user="u")
+
+    assert result.data == {"summary": "ok"}
+    assert result.input_tokens == 5
+    assert result.output_tokens == 3
 
 
 @respx.mock
-async def test_gateway_sends_the_anthropic_shape(monkeypatch: pytest.MonkeyPatch) -> None:
-    """`system` is a top-level field, not a message.
-
-    Passed as a message it is accepted and silently ignored — no error, and
-    the model never sees the rules it was supposed to follow.
-    """
-    monkeypatch.setenv("AI_API_KEY", "test-key")
-    get_settings.cache_clear()
-
-    route = respx.post(_messages_url()).mock(
-        return_value=httpx.Response(200, json=_text_reply('{"summary": "ok"}'))
+async def test_openai_path_sends_system_as_a_message(configured) -> None:
+    configured("openai")
+    route = respx.post(_url("openai")).mock(
+        return_value=httpx.Response(200, json=_reply("openai", "{}"))
     )
+
+    await AIGateway().complete_json(system="RULES", user="question")
+
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["messages"][0] == {"role": "system", "content": "RULES"}
+    assert route.calls.last.request.headers["authorization"] == "Bearer test-key"
+
+
+@respx.mock
+async def test_anthropic_path_sends_system_at_the_top_level(configured) -> None:
+    """Passed as a message it is accepted and silently ignored — no error, and
+    the model never sees the rules it was supposed to follow."""
+    configured("anthropic")
+    route = respx.post(_url("anthropic")).mock(
+        return_value=httpx.Response(200, json=_reply("anthropic", "{}"))
+    )
+
     await AIGateway().complete_json(system="RULES", user="question")
 
     sent = json.loads(route.calls.last.request.content)
@@ -118,96 +138,114 @@ async def test_gateway_sends_the_anthropic_shape(monkeypatch: pytest.MonkeyPatch
     assert sent["messages"] == [{"role": "user", "content": "question"}]
     assert route.calls.last.request.headers["x-api-key"] == "test-key"
     assert route.calls.last.request.headers["anthropic-version"] == "2023-06-01"
-    get_settings.cache_clear()
 
 
 @respx.mock
-async def test_gateway_falls_through_to_a_model_the_account_can_serve(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Haiku is configured but this gateway does not carry it.
-
-    `model_not_found` is a fact about the account, not a failure to report —
-    so it moves to the next candidate instead of surfacing to the learner.
-    """
-    monkeypatch.setenv("AI_API_KEY", "test-key")
-    monkeypatch.setenv("AI_MODEL", "claude-haiku-4-5")
-    get_settings.cache_clear()
-
-    seen: list[str] = []
-
-    def responder(request: httpx.Request) -> httpx.Response:
-        model = json.loads(request.content)["model"]
-        seen.append(model)
-        if model == "claude-haiku-4-5":
-            return httpx.Response(
-                200,
-                json={
-                    "type": "error",
-                    "error": {
-                        "type": "model_not_found",
-                        "message": f'Model "{model}" is not supported by any configured account',
-                    },
-                },
-            )
-        return httpx.Response(200, json=_text_reply('{"summary": "fell through"}'))
-
-    respx.post(_messages_url()).mock(side_effect=responder)
-
-    result = await AIGateway().complete_json(system="s", user="u")
-    assert seen[0] == "claude-haiku-4-5"
-    assert result.model != "claude-haiku-4-5"
-    assert result.data["summary"] == "fell through"
-    get_settings.cache_clear()
-
-
-@respx.mock
-async def test_a_refused_model_is_not_retried_on_the_next_call(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Otherwise every request pays for the same rejection again."""
-    monkeypatch.setenv("AI_API_KEY", "test-key")
-    monkeypatch.setenv("AI_MODEL", "claude-haiku-4-5")
-    get_settings.cache_clear()
-
-    seen: list[str] = []
-
-    def responder(request: httpx.Request) -> httpx.Response:
-        model = json.loads(request.content)["model"]
-        seen.append(model)
-        if model == "claude-haiku-4-5":
-            return httpx.Response(
-                200,
-                json={"type": "error",
-                      "error": {"type": "model_not_found", "message": "nope"}},
-            )
-        return httpx.Response(200, json=_text_reply('{"summary": "ok"}'))
-
-    respx.post(_messages_url()).mock(side_effect=responder)
-
-    client = AIGateway()
-    await client.complete_json(system="s", user="u")
-    seen.clear()
-    await client.complete_json(system="s", user="u")
-
-    assert "claude-haiku-4-5" not in seen
-    get_settings.cache_clear()
-
-
-@respx.mock
-async def test_gateway_unwraps_a_json_code_fence(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Models wrap JSON in ``` fences even when told not to."""
-    monkeypatch.setenv("AI_API_KEY", "test-key")
-    get_settings.cache_clear()
-
-    respx.post(_messages_url()).mock(
+async def test_gateway_maps_capacity_errors_to_ai_unavailable(configured) -> None:
+    """Must surface as AI_UNAVAILABLE, not a 500: the app shows a "tutor is
+    unavailable" state and stays usable, rather than looking broken."""
+    configured("openai")
+    respx.post(_url("openai")).mock(
         return_value=httpx.Response(
-            200, json=_text_reply('```json\n{"summary": "ok"}\n```')
+            200, json=_error("rate_limit_error", "Upstream rate limit exceeded")
         )
     )
+
+    with pytest.raises(AIUnavailable) as exc:
+        await AIGateway().complete_json(system="s", user="u")
+
+    assert exc.value.code == "AI_UNAVAILABLE"
+    assert exc.value.details["reason"] == "capacity"
+    # The upstream text is kept for the log, not for the student.
+    assert "rate limit" in exc.value.details["upstream"].lower()
+
+
+@respx.mock
+async def test_gateway_falls_through_to_a_model_that_works(configured) -> None:
+    """This gateway lists nine Grok models and serves two.
+
+    "Upstream request failed" is how it reports the other seven, so it has to
+    move the chain along — but it is also what a real blip looks like.
+    """
+    configured("openai")
+    monkey_models = ["grok-4.3", "grok-4.6"]
+    seen: list[str] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model != "grok-4.6":
+            return httpx.Response(200, json=_error("upstream_error", "Upstream request failed"))
+        return httpx.Response(200, json=_reply("openai", '{"summary": "fell through"}'))
+
+    respx.post(_url("openai")).mock(side_effect=responder)
+
+    result = await AIGateway().complete_json(system="s", user="u", model=monkey_models[0])
+
+    assert seen[0] == "grok-4.3"
+    assert result.model == "grok-4.6"
+    assert result.data["summary"] == "fell through"
+
+
+@respx.mock
+async def test_a_model_the_account_lacks_is_not_retried_next_call(configured) -> None:
+    """`model_not_found` is a fact about the account, so it is remembered —
+    otherwise every request pays for the same rejection again."""
+    configured("openai")
+    seen: list[str] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        seen.append(model)
+        if model == "ghost-model":
+            return httpx.Response(200, json=_error("model_not_found", "no such model"))
+        return httpx.Response(200, json=_reply("openai", "{}"))
+
+    respx.post(_url("openai")).mock(side_effect=responder)
+
+    client = AIGateway()
+    await client.complete_json(system="s", user="u", model="ghost-model")
+    seen.clear()
+    await client.complete_json(system="s", user="u", model="ghost-model")
+
+    assert "ghost-model" not in seen
+
+
+@respx.mock
+async def test_a_transient_upstream_failure_is_not_remembered(configured) -> None:
+    """The opposite case. Blacklisting a working model over one blip would
+    quietly drop the best model out of the chain for the whole process."""
+    configured("openai")
+    calls = {"n": 0}
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        model = json.loads(request.content)["model"]
+        if model == "flaky" and calls["n"] == 0:
+            calls["n"] += 1
+            return httpx.Response(200, json=_error("upstream_error", "Upstream request failed"))
+        return httpx.Response(200, json=_reply("openai", '{"summary": "recovered"}'))
+
+    respx.post(_url("openai")).mock(side_effect=responder)
+
+    client = AIGateway()
+    await client.complete_json(system="s", user="u", model="flaky")
+    second = await client.complete_json(system="s", user="u", model="flaky")
+
+    assert second.model == "flaky"
+
+
+@respx.mock
+async def test_gateway_unwraps_a_json_code_fence(configured) -> None:
+    """Models wrap JSON in ``` fences even when told not to."""
+    configured("openai")
+    respx.post(_url("openai")).mock(
+        return_value=httpx.Response(
+            200, json=_reply("openai", '```json\n{"summary": "ok"}\n```')
+        )
+    )
+
     result = await AIGateway().complete_json(system="s", user="u")
     assert result.data == {"summary": "ok"}
-    get_settings.cache_clear()
 
 
 async def test_gateway_without_a_key_is_unavailable_not_a_crash() -> None:

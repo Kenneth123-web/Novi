@@ -38,6 +38,25 @@ logger = get_logger(__name__)
 
 
 
+async def _catalog_names(db: AsyncSession, subject_slugs: list[str], limit: int = 40) -> list[str]:
+    """Concept names the app can open, biased to what the learner studies.
+
+    Passed to the model so `related_concepts` comes back as things that
+    actually resolve to a page. Capped, because the whole catalog is 133 names
+    and most of them are irrelevant to any one question.
+    """
+    stmt = select(Concept.name).order_by(Concept.sort_order).limit(limit)
+    if subject_slugs:
+        stmt = (
+            select(Concept.name)
+            .join(Subject, Subject.id == Concept.subject_id)
+            .where(Subject.slug.in_(subject_slugs))
+            .order_by(Concept.sort_order)
+            .limit(limit)
+        )
+    return list((await db.execute(stmt)).scalars().all())
+
+
 async def _known_concepts(db: AsyncSession, user_id: uuid.UUID, limit: int = 8) -> list[str]:
     rows = (
         await db.execute(
@@ -69,6 +88,7 @@ async def ask(
     subjects = list(profile.subject_order) if profile else []
 
     known = await _known_concepts(db, user.id)
+    catalog = await _catalog_names(db, subjects)
     user_prompt = explain_prompt.build_user_prompt(
         question=question,
         stage=profile.stage if profile else None,
@@ -77,6 +97,7 @@ async def ask(
         mode=mode,
         known_concepts=known,
         content_title=content.title if content else None,
+        catalog=catalog,
     )
 
     # Raises AIUnavailable, which the router turns into a 503 the client shows

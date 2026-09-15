@@ -14,7 +14,10 @@ import Foundation
 actor APIClient {
     struct Config {
         var baseURL: URL
-        var timeout: TimeInterval = 90
+        // Longer than the server's AI timeout, so the server's structured
+        // error arrives instead of this client giving up first and reporting a
+        // generic "can't reach the server" for what is really a model outage.
+        var timeout: TimeInterval = 150
 
         /// The simulator shares the host's loopback, so a locally-run API is
         /// reachable at 127.0.0.1 with no configuration. A device build needs

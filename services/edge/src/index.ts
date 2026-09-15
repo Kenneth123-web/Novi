@@ -11,9 +11,12 @@
  * swaps in the real one, and forwards. The provider key then exists only in
  * Cloudflare's secret store, which does not read back.
  *
- * It serves `POST /v1/messages` because that is exactly the path Novi's
- * gateway already builds (`{AI_BASE_URL}/messages`), and it speaks the
- * provider's own error dialect — so the backend needed no code change at all.
+ * It serves both wire protocols on the paths Novi's gateway already builds —
+ * `POST /v1/messages` (Anthropic shape, `x-api-key`) and
+ * `POST /v1/chat/completions` (OpenAI shape, bearer token) — and speaks the
+ * provider's own error dialect, so the backend needed no code change at all.
+ * Which one is in use is the API's `AI_PROTOCOL`; the Worker does not care,
+ * it just has to custody the key on whichever path the request arrives on.
  *
  * What this genuinely protects, stated plainly:
  *   - The provider key is off the origin server entirely.
@@ -84,15 +87,26 @@ async function recordSpend(env: Env, now: Date, used: number): Promise<void> {
   await env.EDGE_KV.put(key, String(used + 1), { expirationTtl: 60 * 60 * 48 });
 }
 
-async function handleMessages(
+/** The shared secret, from whichever header this protocol puts it in. */
+function presentedSecret(request: Request): string {
+  const key = request.headers.get("x-api-key");
+  if (key) return key;
+  const auth = request.headers.get("authorization") ?? "";
+  return auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+}
+
+type Protocol = "anthropic" | "openai";
+
+async function handleProxy(
   request: Request,
   env: Env,
   ctx: ExecutionContext,
+  protocol: Protocol,
 ): Promise<Response> {
   // ── Who is calling ───────────────────────────────────────────────────────
-  const presented = request.headers.get("x-api-key") ?? "";
+  const presented = presentedSecret(request);
   if (!presented || !(await secretMatches(presented, env.EDGE_SHARED_SECRET))) {
-    log("edge_auth_rejected");
+    log("edge_auth_rejected", { protocol });
     return providerError(401, "authentication_error", "Edge proxy rejected the caller");
   }
 
@@ -141,7 +155,10 @@ async function handleMessages(
   // remove it. Streaming is never cached: the body is consumed as it flows.
   const ttl = Number(env.CACHE_TTL_SECONDS) || 0;
   const cacheable = ttl > 0 && parsed.stream !== true && (parsed.temperature ?? 0) <= 0.3;
-  const cacheKey = cacheable ? `ai:${await bodyHash(body)}` : null;
+  // The protocol is part of the key: the same prompt sent both ways produces
+  // two differently-shaped responses, and one entry serving both would hand a
+  // caller a body it cannot parse.
+  const cacheKey = cacheable ? `ai:${protocol}:${await bodyHash(body)}` : null;
 
   if (cacheKey) {
     const hit = await env.EDGE_KV.get(cacheKey);
@@ -165,21 +182,29 @@ async function handleMessages(
   }
 
   // ── Forward ──────────────────────────────────────────────────────────────
-  const upstream = `${env.PROVIDER_BASE_URL.replace(/\/$/, "")}/messages`;
+  const base = env.PROVIDER_BASE_URL.replace(/\/$/, "");
+  const upstream =
+    protocol === "anthropic" ? `${base}/messages` : `${base}/chat/completions`;
+
+  // The swap. This is the whole point of the Worker: the caller's shared
+  // secret never leaves this function, and the real key never leaves Cloudflare.
+  const headers: Record<string, string> =
+    protocol === "anthropic"
+      ? {
+          "x-api-key": env.PROVIDER_API_KEY,
+          "anthropic-version": request.headers.get("anthropic-version") ?? "2023-06-01",
+          "content-type": "application/json",
+        }
+      : {
+          authorization: `Bearer ${env.PROVIDER_API_KEY}`,
+          "content-type": "application/json",
+        };
+
   const started = Date.now();
 
   let response: Response;
   try {
-    response = await fetch(upstream, {
-      method: "POST",
-      headers: {
-        // The swap. This is the whole point of the Worker.
-        "x-api-key": env.PROVIDER_API_KEY,
-        "anthropic-version": request.headers.get("anthropic-version") ?? "2023-06-01",
-        "content-type": "application/json",
-      },
-      body,
-    });
+    response = await fetch(upstream, { method: "POST", headers, body });
   } catch (error) {
     log("edge_upstream_unreachable", { error: String(error) });
     return providerError(502, "api_error", "Could not reach the AI provider");
@@ -187,6 +212,7 @@ async function handleMessages(
 
   ctx.waitUntil(recordSpend(env, now, budget.used));
   log("edge_forwarded", {
+    protocol,
     model: parsed.model,
     status: response.status,
     latency_ms: Date.now() - started,
@@ -235,7 +261,10 @@ export default {
         return handleHealth(env);
       }
       if (request.method === "POST" && url.pathname === "/v1/messages") {
-        return await handleMessages(request, env, ctx);
+        return await handleProxy(request, env, ctx, "anthropic");
+      }
+      if (request.method === "POST" && url.pathname === "/v1/chat/completions") {
+        return await handleProxy(request, env, ctx, "openai");
       }
       return providerError(404, "not_found_error", "No such route on the edge proxy");
     } catch (error) {

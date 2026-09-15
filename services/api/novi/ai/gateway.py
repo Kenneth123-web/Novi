@@ -35,14 +35,21 @@ ANTHROPIC_VERSION = "2023-06-01"
 
 
 class ModelUnavailable(Exception):
-    """The gateway does not serve this model for this account.
+    """This model did not work. Try the next one in the chain.
 
     Distinct from AIUnavailable on purpose: it is not a failure to report to
-    the learner, it is an instruction to try the next model in the chain.
+    the learner, it is an instruction to move on.
+
+    `permanent` separates the two ways a model can fail us. `model_not_found`
+    is a fact about the account and worth remembering — retrying it on every
+    request wastes a round trip forever. "Upstream request failed" might be
+    this minute only, so the model is skipped for this request and tried again
+    on the next. Caching that one would blacklist a working model over a blip.
     """
 
-    def __init__(self, model: str, message: str) -> None:
+    def __init__(self, model: str, message: str, *, permanent: bool) -> None:
         self.model = model
+        self.permanent = permanent
         super().__init__(message)
 
 
@@ -237,10 +244,18 @@ class AIGateway:
             kind = str(error.get("type", ""))
             lowered = message.lower()
 
-            # A model the account cannot serve is not a capacity problem and
-            # must not be retried — it is a signal to try the next candidate.
+            # A model the account cannot serve is not a capacity problem — it
+            # is a signal to try the next candidate.
             if kind == "model_not_found" or "not supported by any configured" in lowered:
-                raise ModelUnavailable(payload.get("model", ""), message)
+                raise ModelUnavailable(payload.get("model", ""), message, permanent=True)
+
+            # The gateway lists nine Grok models and can actually serve two.
+            # The other seven answer "Upstream request failed", which is this
+            # gateway's way of saying the model is not really wired up. Treat
+            # it as a reason to move down the chain, but do not remember it:
+            # the same string is what a genuinely transient blip returns.
+            if kind == "upstream_error" or "upstream request failed" in lowered:
+                raise ModelUnavailable(payload.get("model", ""), message, permanent=False)
 
             reason = (
                 "capacity"
@@ -312,8 +327,12 @@ class AIGateway:
                 chosen = candidate
                 break
             except ModelUnavailable as exc:
-                logger.warning("ai_model_unavailable", extra={"model": candidate})
-                self._unavailable.add(candidate)
+                logger.warning(
+                    "ai_model_unavailable",
+                    extra={"model": candidate, "permanent": exc.permanent},
+                )
+                if exc.permanent:
+                    self._unavailable.add(candidate)
                 last = exc
                 continue
 

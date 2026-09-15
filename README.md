@@ -45,21 +45,23 @@ Then:
 ```
 AI_API_KEY=sk-...
 AI_BASE_URL=https://1pkapi.com/v1
-AI_PROTOCOL=anthropic
-AI_MODEL=claude-haiku-4-5
+AI_PROTOCOL=openai
+AI_MODEL=grok-4.6
 ```
 
-`AI_PROTOCOL=anthropic` sends `POST /v1/messages` with `x-api-key` — the shape
-`@ai-sdk/anthropic` uses. Set it to `openai` for a gateway that only speaks
-`/v1/chat/completions`. Against 1pkapi the native endpoint is measurably
-healthier: it answers in ~38s with a structured, transient `rate_limit_error`
-where the OpenAI path hangs for 240s.
+`AI_PROTOCOL` picks the wire shape: `openai` is `POST /v1/chat/completions`
+with a bearer token, `anthropic` is `POST /v1/messages` with `x-api-key`. Which
+one is right depends entirely on what the gateway is fronting — Grok answers on
+the OpenAI path and refuses the Anthropic one; the Claude roster was the other
+way round. Getting it wrong is silent: the request just fails in a way that
+looks like an outage.
 
-`AI_MODEL` names the model you *want*. If the gateway will not serve it the
-request walks `AI_MODEL_FALLBACKS` and uses the first one that is served,
-remembering the refusal so the chain costs one wasted call rather than one per
-request. That is why Haiku is the default even though this gateway does not
-carry it yet.
+`AI_MODEL` names the model you *want*. Listing is not serving — of this
+gateway's nine Grok entries, two actually answer — so when one does not work
+the request walks `AI_MODEL_FALLBACKS` and uses the first that does. A
+`model_not_found` is remembered (it is a fact about the account); a transient
+upstream failure is not (blacklisting a good model over one blip would quietly
+drop it from the chain).
 
 **The key never reaches the client.** The app calls `POST /v1/ask` and the API
 calls the provider. A key in an app bundle is a key anyone with the bundle can
@@ -145,12 +147,11 @@ layout. Each cover is a deterministic function of the item's id, so the same
 item draws the same picture on every launch and the masonry is a stable grid
 instead of noise. See `Components/GeneratedArt.swift`.
 
-**Live AI depends on the gateway having capacity.** At the time of writing,
-`1pkapi.com` returns `"All available accounts exhausted"` for every model on
-this key. That is handled, not hidden: the API maps it to a structured
-`AI_UNAVAILABLE`, and the app shows a "tutor is offline" state and stays fully
-usable. Ask, quizzes, translation and thread summaries all start working the
-moment the account has capacity — nothing else needs to change.
+**Live AI works.** Ask, quizzes, discussion translation and summaries all run
+against Grok through the configured gateway; a full explanation lands in
+roughly 6-30 seconds. When the gateway has no capacity — which it periodically
+does not — the API maps that to a structured `AI_UNAVAILABLE` and the app
+shows a "tutor is offline" state while everything else keeps working.
 
 ## iOS build notes
 

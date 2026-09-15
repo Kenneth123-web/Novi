@@ -4,9 +4,13 @@ import worker from "../src/index";
 
 const SECRET = "test-shared-secret";
 
-function ask(body: unknown, headers: Record<string, string> = {}): Request {
+function ask(
+  body: unknown,
+  headers: Record<string, string> = {},
+  path = "/v1/messages",
+): Request {
   const payload = JSON.stringify(body);
-  return new Request("https://edge.test/v1/messages", {
+  return new Request(`https://edge.test${path}`, {
     method: "POST",
     headers: {
       "x-api-key": SECRET,
@@ -219,9 +223,49 @@ describe("limits and routing", () => {
   });
 
   it("404s an unknown route in the provider's error shape", async () => {
-    const response = await run(new Request("https://edge.test/v1/chat/completions", { method: "POST" }));
+    const response = await run(new Request("https://edge.test/v1/embeddings", { method: "POST" }));
     expect(response.status).toBe(404);
     const body = (await response.json()) as { type: string };
     expect(body.type).toBe("error");
+  });
+});
+
+describe("openai protocol", () => {
+  const OPENAI = "/v1/chat/completions";
+
+  it("accepts the shared secret as a bearer token", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => providerOK());
+
+    const request = ask({ model: "grok-4.6" }, { "x-api-key": "", authorization: `Bearer ${SECRET}` }, OPENAI);
+    const response = await run(request);
+
+    expect(response.status).toBe(200);
+    expect(fetchSpy).toHaveBeenCalledOnce();
+  });
+
+  it("forwards to /chat/completions with a bearer provider key", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => providerOK());
+
+    await run(ask({ model: "grok-4.6", temperature: 0 }, {}, OPENAI));
+
+    const [url, init] = fetchSpy.mock.calls[0]! as [string, RequestInit];
+    expect(url).toBe("https://1pkapi.com/v1/chat/completions");
+    const sent = new Headers(init.headers);
+    // The swap, on the other protocol.
+    expect(sent.get("authorization")).toBe("Bearer sk-test-provider-key");
+    expect(sent.get("authorization")).not.toContain(SECRET);
+  });
+
+  it("keys the cache per protocol", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => providerOK());
+    const payload = { model: "m", temperature: 0, messages: [{ role: "user", content: "q" }] };
+
+    await run(ask(payload, {}, "/v1/messages"));
+    const other = await run(ask(payload, {}, OPENAI));
+
+    // Same bytes, different wire shape: sharing one entry would hand a caller
+    // a body it cannot parse.
+    expect(other.headers.get("x-novi-edge")).toBe("miss");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 });
