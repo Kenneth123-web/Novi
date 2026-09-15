@@ -33,3 +33,9 @@ __pycache__/
 # the design skill's seed helper rather than tracking 2MB of editor code.
 design/canvas/*-canvas.html
 design/canvas/novi-ui-system.html
+
+# ── Cloudflare Worker ─────────────────────────────────────────────────────────
+# Holds the real provider key locally; production uses `wrangler secret put`.
+services/edge/.dev.vars
+services/edge/node_modules/
+services/edge/.wrangler/

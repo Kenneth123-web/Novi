@@ -16,7 +16,8 @@ feed → open something → "I have a question" → explanation
 
 ```
 apps/mobile/       SwiftUI client (iOS 17+)
-services/api/      FastAPI — the only thing that talks to the database or to Gemini
+services/api/      FastAPI — the only thing that talks to the database
+services/edge/     Cloudflare Worker — custodian of the AI provider key
 database/          Migrations and seed data
 docs/              Architecture, database, API
 scripts/dev.sh     Every command below, in one place
@@ -61,8 +62,22 @@ request. That is why Haiku is the default even though this gateway does not
 carry it yet.
 
 **The key never reaches the client.** The app calls `POST /v1/ask` and the API
-calls Gemini. A key in an app bundle is a key anyone with the bundle can
+calls the provider. A key in an app bundle is a key anyone with the bundle can
 extract. `.env` is gitignored; nothing in `apps/mobile` reads it.
+
+**And it does not have to reach the API server either.** `services/edge` is a
+Cloudflare Worker that holds the provider key and accepts a shared secret in
+its place, so the origin keeps no copy:
+
+```
+iOS app ──▶ Novi API ──▶ novi-edge ──▶ provider
+            (shared        (real key,
+             secret)        capped, cached)
+```
+
+It serves the same path and speaks the same error dialect the API already
+expects, so switching is two environment variables and no code. See
+[`services/edge/README.md`](services/edge/README.md).
 
 The simulator shares the host's loopback, so the app finds the API at
 `127.0.0.1:8000` with no configuration. A device build needs the host's LAN

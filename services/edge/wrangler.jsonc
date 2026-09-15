@@ -1,0 +1,50 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "novi-edge",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-15",
+  // node:crypto and friends. Cheap to enable, and a missing built-in shows up
+  // as a runtime import error rather than a build failure.
+  "compatibility_flags": ["nodejs_compat"],
+
+  // NEVER put secrets here — this file is committed. Both of these are set
+  // with `wrangler secret put`:
+  //   PROVIDER_API_KEY    the real upstream key. The only copy outside
+  //                       Cloudflare should be wherever you got it from.
+  //   EDGE_SHARED_SECRET  what the Novi API sends to prove it is the Novi API.
+  "vars": {
+    "PROVIDER_BASE_URL": "https://1pkapi.com/v1",
+    // 0 turns caching off. Responses are held at the edge, so this is a
+    // data-at-rest decision as much as a cost one — see README.
+    "CACHE_TTL_SECONDS": "86400",
+    // A guard rail, not a ledger. See the comment on `withinBudget`.
+    "DAILY_REQUEST_CAP": "2000",
+    // Requests larger than this are refused before they are read. An
+    // explanation prompt is a few KB; anything near the cap is a mistake or
+    // an attack.
+    "MAX_REQUEST_BYTES": "262144"
+  },
+
+  "kv_namespaces": [
+    {
+      "binding": "EDGE_KV",
+      // Replace with your own: `wrangler kv namespace create EDGE_KV`
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+    }
+  ],
+
+  // Per-caller burst control, enforced before the request costs anything
+  // upstream. Separate from DAILY_REQUEST_CAP, which is about the day's spend.
+  "ratelimits": [
+    {
+      "name": "BURST_LIMIT",
+      "namespace_id": "1001",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

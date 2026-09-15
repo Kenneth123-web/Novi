@@ -1,0 +1,16 @@
+# Local development secrets. Copy to `.dev.vars` — which is gitignored.
+#
+# In production these are set with `wrangler secret put <NAME>`, which stores
+# them encrypted in Cloudflare and never reads them back. They are NOT in
+# wrangler.jsonc, because that file is committed.
+#
+# The real upstream provider key. After this Worker is deployed, this should be
+# the ONLY copy outside your provider dashboard — in particular the Novi API
+# server no longer needs it.
+PROVIDER_API_KEY=sk-replace-me
+
+# What the Novi API sends to prove it is the Novi API. Generate one with:
+#   openssl rand -base64 48
+# Set the same value as AI_API_KEY in the API's .env — the API sends it as
+# x-api-key and this Worker swaps it for PROVIDER_API_KEY upstream.
+EDGE_SHARED_SECRET=replace-me

@@ -20,14 +20,30 @@ half-built ones.
 
 ## The API key boundary
 
-The Gemini key lives in `services/api` and nowhere else. The app calls
-`POST /v1/ask`; the API calls the gateway. This is the single most important
-structural decision in the repo: a key shipped in an iOS binary is a key
-anybody with a copy of that binary can extract, and it cannot be rotated
-without an App Store release.
+The app never holds a provider key. It calls `POST /v1/ask`; the server calls
+the provider. This is the single most important structural decision in the
+repo: a key shipped in an iOS binary is a key anybody with a copy of that
+binary can extract, and it cannot be rotated without an App Store release.
 
-`novi/ai/gateway.py` is the only module that knows the key exists. Everything
-above it receives a parsed dict or an `AIUnavailable`.
+`novi/ai/gateway.py` is the only module in the API that knows a key exists.
+Everything above it receives a parsed dict or an `AIUnavailable`.
+
+**One layer further out**, `services/edge` is a Cloudflare Worker that holds
+the real provider key and accepts a shared secret in its place. With it
+deployed the origin keeps no copy at all, so compromising the API server
+yields a credential that can only spend a capped daily budget through one
+endpoint — not the provider account.
+
+The Worker serves `POST /v1/messages` and returns the provider's own error
+shape. That is not a coincidence: it is exactly what the gateway already
+builds and already parses, so the boundary moved without a line of backend
+code changing. Two environment variables switch it on.
+
+The gateway is protocol-agnostic for the same reason. `AI_PROTOCOL=anthropic`
+sends `POST /v1/messages` with `x-api-key`; `openai` sends
+`/v1/chat/completions` with a bearer token. Against the configured gateway the
+native path answers in ~38s with a structured transient error where the OpenAI
+path hangs for 240s, which is the whole argument for making it a setting.
 
 ## Layering
 
