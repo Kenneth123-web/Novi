@@ -1,0 +1,112 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  # A new push supersedes the run in flight for the same ref.
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: novi
+          POSTGRES_PASSWORD: novi
+          POSTGRES_DB: novi_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U novi -d novi_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://novi:novi@localhost:5432/novi_test
+      ENV: test
+      JWT_SECRET: ci-secret-value-that-is-long-enough-00000000
+      # Empty on purpose: the suite must never reach a real provider. The AI
+      # tests mock the transport and assert the unconfigured path.
+      AI_API_KEY: ""
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install
+        run: |
+          uv venv .venv --python 3.13
+          VIRTUAL_ENV=.venv uv pip install -e "services/api[dev]"
+
+      - name: Lint
+        run: .venv/bin/ruff check services/api database
+
+      - name: Tests
+        run: .venv/bin/python -m pytest services/api/tests -q
+
+      - name: Migrations apply, and match the models
+        run: |
+          .venv/bin/alembic -c database/alembic.ini upgrade head
+          # Fails if a model changed without a matching migration.
+          .venv/bin/alembic -c database/alembic.ini check
+
+      - name: Migrations are reversible
+        run: .venv/bin/alembic -c database/alembic.ini downgrade base
+
+  edge:
+    name: edge
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/edge
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: services/edge/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        # Runs against the committed worker-configuration.d.ts, so this also
+        # catches a wrangler.jsonc change nobody re-ran `wrangler types` for.
+        run: npx tsc --noEmit
+
+      - name: Tests
+        # vitest-pool-workers runs these inside workerd, not against a mock.
+        run: npx vitest run
+
+  ios:
+    name: ios
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate project
+        working-directory: apps/mobile
+        run: xcodegen generate
+
+      - name: Build
+        # Simulator SDK only. A device build needs a signing identity a runner
+        # does not have; the simulator build is ad-hoc signed by project.yml.
+        run: |
+          xcodebuild -project apps/mobile/Novi.xcodeproj -scheme Novi \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            build
