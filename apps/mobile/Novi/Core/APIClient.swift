@@ -19,14 +19,22 @@ actor APIClient {
         // generic "can't reach the server" for what is really a model outage.
         var timeout: TimeInterval = 150
 
-        /// The simulator shares the host's loopback, so a locally-run API is
-        /// reachable at 127.0.0.1 with no configuration. A device build needs
-        /// the host's LAN address — pass `-apiBaseURL`.
+        /// Simulator → loopback. Device → `NOVAPIBaseURL` from Info.plist
+        /// (written by `Configs/Local.xcconfig`). `-apiBaseURL` still wins
+        /// when a launch argument is present.
         static var `default`: Config {
             if let raw = UserDefaults.standard.string(forKey: "apiBaseURL"),
                let url = URL(string: raw) {
                 return Config(baseURL: url)
             }
+            #if !targetEnvironment(simulator)
+            if let raw = Bundle.main.object(forInfoDictionaryKey: "NOVAPIBaseURL") as? String {
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let url = URL(string: trimmed), !trimmed.isEmpty {
+                    return Config(baseURL: url)
+                }
+            }
+            #endif
             return Config(baseURL: URL(string: "http://127.0.0.1:8000/v1")!)
         }
     }

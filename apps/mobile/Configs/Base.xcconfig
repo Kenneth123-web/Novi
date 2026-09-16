@@ -3,4 +3,5 @@
 // `#include?` is the OPTIONAL include: a fresh clone has no Local.xcconfig and
 // must still configure and build for the simulator. A plain `#include` would
 // fail the whole project instead.
+NOV_API_BASE_URL =
 #include? "Local.xcconfig"
