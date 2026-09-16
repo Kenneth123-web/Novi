@@ -153,3 +153,24 @@ async def test_dev_skip_requires_secret_when_configured(
     assert (await client.post("/auth/dev-skip", json={})).status_code == 401
     r = await client.post("/auth/dev-skip", json={"secret": "skip-secret-value"})
     assert r.status_code == 200, r.text
+
+
+def test_production_refuses_dev_skip_secret() -> None:
+    from novi.config import Settings
+
+    with pytest.raises(RuntimeError, match="DEV_SKIP_SECRET"):
+        Settings(
+            env="production",
+            jwt_secret="test-secret-value-that-is-long-enough-00000",
+            cors_origins=["https://novi.app"],
+            debug=False,
+            dev_skip_secret="still-set",
+        ).check_production()
+
+
+async def test_health_does_not_advertise_env(client: AsyncClient) -> None:
+    r = await client.get("/health")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "ok"
+    assert "env" not in body

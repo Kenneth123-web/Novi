@@ -90,11 +90,13 @@ afterEach(() => {
 });
 
 describe("health", () => {
-  it("reports that secrets are present, never their values", async () => {
+  it("reports liveness without advertising secrets", async () => {
     const response = await run(new Request("https://console.test/health"));
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { admin_password: string };
-    expect(body.admin_password).toBe("configured");
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.status).toBe("ok");
+    expect(body).not.toHaveProperty("admin_password");
+    expect(body).not.toHaveProperty("origin_secret");
     const text = JSON.stringify(body);
     expect(text).not.toContain(ADMIN);
     expect(text).not.toContain(ORIGIN);
@@ -163,6 +165,14 @@ describe("ingest", () => {
     const body = (await status.json()) as { is_active: boolean };
     expect(body.is_active).toBe(false);
   });
+
+  it("ignores is_admin on ingest so a leaked origin secret cannot mint operators", async () => {
+    await run(ingestAccount({ ...sample, is_admin: true }));
+    const token = await signIn();
+    const me = await run(admin(`/api/admin/users/${sample.id}`, token));
+    const detail = (await me.json()) as { user: { is_admin: number } };
+    expect(detail.user.is_admin).toBe(0);
+  });
 });
 
 describe("admin", () => {
@@ -177,6 +187,22 @@ describe("admin", () => {
     expect(response.status).toBe(401);
     const text = await response.text();
     expect(text).not.toContain(ADMIN);
+  });
+
+  it("rate-limits repeated admin login failures from one IP", async () => {
+    const ip = "203.0.113.9";
+    const attempt = () =>
+      run(
+        new Request("https://console.test/api/admin/login", {
+          method: "POST",
+          headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+          body: JSON.stringify({ password: "nope" }),
+        }),
+      );
+    for (let i = 0; i < 5; i++) {
+      expect((await attempt()).status).toBe(401);
+    }
+    expect((await attempt()).status).toBe(429);
   });
 
   it("lists users, stats and usage after sign-in", async () => {

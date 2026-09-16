@@ -54,13 +54,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     s = get_settings()
+    # Production does not advertise the schema. /docs is a map of every
+    # route, including the ones an attacker would otherwise have to guess.
+    docs = None if s.is_production else "/docs"
+    openapi = None if s.is_production else "/openapi.json"
     app = FastAPI(
         title="Novi API",
         version=__version__,
         description=DESCRIPTION,
         lifespan=lifespan,
-        docs_url="/docs",
-        openapi_url="/openapi.json",
+        docs_url=docs,
+        redoc_url=None if s.is_production else "/redoc",
+        openapi_url=openapi,
         responses={
             401: {"model": ErrorEnvelope, "description": "Not authenticated"},
             404: {"model": ErrorEnvelope, "description": "Not found"},

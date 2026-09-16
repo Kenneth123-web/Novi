@@ -121,7 +121,6 @@ async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
          email = excluded.email,
          username = excluded.username,
          display_name = excluded.display_name,
-         is_admin = excluded.is_admin,
          last_seen_at = excluded.last_seen_at,
          last_login_at = COALESCE(excluded.last_login_at, users.last_login_at),
          login_count = users.login_count + excluded.login_count`,
@@ -131,7 +130,7 @@ async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
       body.username,
       body.display_name ?? "",
       body.is_active === false ? 0 : 1,
-      body.is_admin ? 1 : 0,
+      0,
       body.source || "register",
       created,
       at,
@@ -195,7 +194,46 @@ async function userStatus(env: Env, id: string): Promise<Response> {
   return json({ is_active: row.is_active === 1, known: true });
 }
 
+function clientIp(request: Request): string {
+  return (
+    request.headers.get("cf-connecting-ip") ||
+    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    "unknown"
+  );
+}
+
+/** Isolate-local. Recycles on a new isolate, which is still enough to stop
+ * an unattended password spray against /api/admin/login. */
+const loginFailures = new Map<string, { count: number; resetAt: number }>();
+const LOGIN_WINDOW_MS = 60_000;
+const LOGIN_MAX_FAILURES = 5;
+
+function loginLocked(ip: string): boolean {
+  const row = loginFailures.get(ip);
+  if (!row) return false;
+  if (Date.now() >= row.resetAt) {
+    loginFailures.delete(ip);
+    return false;
+  }
+  return row.count >= LOGIN_MAX_FAILURES;
+}
+
+function recordLoginFailure(ip: string): void {
+  const now = Date.now();
+  const row = loginFailures.get(ip);
+  if (!row || now >= row.resetAt) {
+    loginFailures.set(ip, { count: 1, resetAt: now + LOGIN_WINDOW_MS });
+    return;
+  }
+  row.count += 1;
+}
+
 async function adminLogin(request: Request, env: Env): Promise<Response> {
+  const ip = clientIp(request);
+  if (loginLocked(ip)) {
+    log("console_admin_login_rate_limited", { ip });
+    return err(429, "RATE_LIMITED", "Too many attempts. Try again in a minute.");
+  }
   let body: { password?: string };
   try {
     body = (await request.json()) as { password?: string };
@@ -204,9 +242,11 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
   }
   const presented = body.password ?? "";
   if (!presented || !(await secretMatches(presented, env.ADMIN_PASSWORD))) {
+    recordLoginFailure(ip);
     log("console_admin_login_rejected");
     return err(401, "UNAUTHORIZED", "Wrong password");
   }
+  loginFailures.delete(ip);
   const token = crypto.randomUUID() + crypto.randomUUID();
   const hash = await sha256Hex(token);
   const created = nowIso();
@@ -444,12 +484,7 @@ export default {
 
     try {
       if (request.method === "GET" && pathname === "/health") {
-        return json({
-          status: "ok",
-          service: "novi-console",
-          admin_password: env.ADMIN_PASSWORD ? "configured" : "missing",
-          origin_secret: env.CONSOLE_ORIGIN_SECRET ? "configured" : "missing",
-        });
+        return json({ status: "ok", service: "novi-console" });
       }
 
       if (pathname === "/api/ingest/account" && request.method === "POST") {

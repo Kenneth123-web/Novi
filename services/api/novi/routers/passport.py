@@ -26,7 +26,11 @@ router = APIRouter(tags=["passport"])
 # ── Quizzes ──────────────────────────────────────────────────────────────────
 
 
-@router.post("/quiz", response_model=QuizOut, dependencies=[Depends(rate_limit("ai"))])
+@router.post(
+    "/quiz",
+    response_model=QuizOut,
+    dependencies=[Depends(rate_limit("ai", per_user=True))],
+)
 async def create_quiz(body: QuizRequest, user: CurrentUser, db: DB) -> QuizOut:
     quiz, concept = await quiz_service.generate(
         db,

@@ -15,7 +15,9 @@ router = APIRouter(tags=["health"])
 
 @router.get("/health", summary="Liveness")
 async def health() -> dict[str, Any]:
-    return {"status": "ok", "version": __version__, "env": get_settings().env}
+    # Version is fine on a liveness probe. The environment name is not:
+    # it tells a scanner whether this box is the one with DEBUG still on.
+    return {"status": "ok", "version": __version__}
 
 
 @router.get("/health/ready", summary="Readiness")
@@ -30,8 +32,9 @@ async def ready(
     try:
         await db.execute(text("SELECT 1"))
         checks["database"] = "ok"
-    except Exception as exc:  # reported in the payload, not raised
-        checks["database"] = f"error: {type(exc).__name__}"
+    except Exception:
+        # Exception class names leak infrastructure (asyncpg vs psycopg).
+        checks["database"] = "error"
 
     checks["ai"] = await gateway.health() if check_ai else (
         {"status": "configured" if get_settings().ai_configured else "unconfigured"}

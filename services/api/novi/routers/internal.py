@@ -9,18 +9,24 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Depends, Header
 from pydantic import BaseModel
 from sqlalchemy import delete
 
 from novi.config import get_settings
 from novi.core.deps import DB
 from novi.core.errors import NotFound, Unauthorized
+from novi.core.ratelimit import rate_limit
 from novi.core.security import secret_matches
 from novi.models import Session, User
 from novi.schemas.common import Ok
 
-router = APIRouter(prefix="/internal", tags=["internal"], include_in_schema=False)
+router = APIRouter(
+    prefix="/internal",
+    tags=["internal"],
+    include_in_schema=False,
+    dependencies=[Depends(rate_limit("internal"))],
+)
 
 
 class UserPatch(BaseModel):

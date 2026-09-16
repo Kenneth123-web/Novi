@@ -217,7 +217,9 @@ describe("limits and routing", () => {
     const text = await response.text();
 
     expect(response.status).toBe(200);
-    expect(text).toContain('"provider_key":"configured"');
+    expect(text).toContain('"status":"ok"');
+    expect(text).not.toContain("provider_key");
+    expect(text).not.toContain("shared_secret");
     expect(text).not.toContain("sk-test-provider-key");
     expect(text).not.toContain(SECRET);
   });

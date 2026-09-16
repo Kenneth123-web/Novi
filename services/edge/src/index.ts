@@ -240,16 +240,8 @@ async function handleProxy(
   });
 }
 
-function handleHealth(env: Env): Response {
-  // Reports whether each secret is PRESENT. Never any part of its value.
-  return Response.json({
-    status: "ok",
-    service: "novi-edge",
-    provider_key: env.PROVIDER_API_KEY ? "configured" : "missing",
-    shared_secret: env.EDGE_SHARED_SECRET ? "configured" : "missing",
-    cache_ttl_seconds: Number(env.CACHE_TTL_SECONDS) || 0,
-    daily_request_cap: Number(env.DAILY_REQUEST_CAP) || 0,
-  });
+function handleHealth(): Response {
+  return Response.json({ status: "ok", service: "novi-edge" });
 }
 
 export default {
@@ -258,7 +250,7 @@ export default {
 
     try {
       if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/")) {
-        return handleHealth(env);
+        return handleHealth();
       }
       if (request.method === "POST" && url.pathname === "/v1/messages") {
         return await handleProxy(request, env, ctx, "anthropic");

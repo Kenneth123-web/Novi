@@ -18,7 +18,11 @@ from novi.services import ask_service, content_service, discussion_service
 router = APIRouter(tags=["ask"])
 
 
-@router.post("/ask", response_model=AskResponse, dependencies=[Depends(rate_limit("ai"))])
+@router.post(
+    "/ask",
+    response_model=AskResponse,
+    dependencies=[Depends(rate_limit("ai", per_user=True))],
+)
 async def ask(body: AskRequest, user: CurrentUser, db: DB) -> AskResponse:
     """Explain, then hand back the rabbit hole in the same response.
 
@@ -97,14 +101,18 @@ async def get_discussion(discussion_id: uuid.UUID, db: DB) -> DiscussionOut:
 
 
 @router.post(
-    "/discussions/{discussion_id}/summarize", dependencies=[Depends(rate_limit("ai"))]
+    "/discussions/{discussion_id}/summarize",
+    dependencies=[Depends(rate_limit("ai", per_user=True))],
+
 )
 async def summarize(discussion_id: uuid.UUID, user: CurrentUser, db: DB) -> dict:
     return await discussion_service.summarize(db, discussion_id)
 
 
 @router.post(
-    "/discussions/{discussion_id}/translate", dependencies=[Depends(rate_limit("ai"))]
+    "/discussions/{discussion_id}/translate",
+    dependencies=[Depends(rate_limit("ai", per_user=True))],
+
 )
 async def translate(
     discussion_id: uuid.UUID, body: SummarizeRequest, user: CurrentUser, db: DB
@@ -119,7 +127,7 @@ async def search(
     user: CurrentUser,
     db: DB,
     limit: int = Query(default=20, ge=1, le=50),
-    _: None = Depends(rate_limit("search")),
+    _: None = Depends(rate_limit("search", per_user=True)),
 ) -> dict:
     """Universal search: a concept, then content, then discussions.
 

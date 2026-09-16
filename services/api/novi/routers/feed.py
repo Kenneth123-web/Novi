@@ -83,7 +83,9 @@ async def get_content(content_id: uuid.UUID, user: CurrentUser, db: DB) -> Conte
 
 
 @router.post(
-    "/interactions", response_model=Ok, dependencies=[Depends(rate_limit("write"))]
+    "/interactions",
+    response_model=Ok,
+    dependencies=[Depends(rate_limit("write", per_user=True))],
 )
 async def track(body: InteractionRequest, user: CurrentUser, db: DB) -> Ok:
     """The single write the client uses to report behaviour.

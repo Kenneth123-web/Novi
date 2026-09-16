@@ -33,7 +33,10 @@ class Settings(BaseSettings):
     # ── Auth ─────────────────────────────────────────────────────────────────
     jwt_secret: str = DEV_JWT_SECRET
     jwt_algorithm: str = "HS256"
-    access_token_ttl_seconds: int = 60 * 60 * 24 * 7
+    # Short-lived on purpose. Logout only burns the refresh row; a stolen
+    # access JWT stays valid until exp. Seven days made theft durable.
+    # The iOS client already refreshes on 401, so an hour is enough.
+    access_token_ttl_seconds: int = 60 * 60
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 60
 
     # Developer skip-login. Empty means the route exists in development/test
@@ -119,6 +122,12 @@ class Settings(BaseSettings):
             problems.append("CORS_ORIGINS must not be '*'")
         if self.debug:
             problems.append("DEBUG must be false")
+        if self.dev_skip_secret:
+            problems.append("DEV_SKIP_SECRET must be unset in production")
+        if self.console_base_url and len(self.console_origin_secret) < 32:
+            problems.append(
+                "CONSOLE_ORIGIN_SECRET must be at least 32 characters when CONSOLE_BASE_URL is set"
+            )
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 

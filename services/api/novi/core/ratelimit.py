@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from fastapi import Request
 
 from novi.config import get_settings
+from novi.core.deps import CurrentUser
 from novi.core.errors import RateLimited
 from novi.core.logging import get_logger
 
@@ -27,9 +28,28 @@ LIMITS = {
     "search": Limit(60, 60),
     "auth": Limit(10, 60),
     "write": Limit(120, 60),
+    "internal": Limit(30, 60),
 }
 
 _buckets: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+
+
+def _client_ip(request: Request) -> str:
+    """The connecting address, not a client-supplied X-Forwarded-For.
+
+    A raw X-Forwarded-For is trivial to spoof and would mint a fresh bucket
+    per request. Cloudflare's CF-Connecting-IP is set by the edge; in
+    production, if that is missing, the leftmost forwarded hop is the next
+    best thing. Locally we use the socket peer.
+    """
+    cf = request.headers.get("cf-connecting-ip")
+    if cf:
+        return cf.strip()
+    if get_settings().is_production:
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
 
 
 def _key(request: Request, name: str) -> str:
@@ -38,36 +58,50 @@ def _key(request: Request, name: str) -> str:
     user = getattr(request.state, "user", None)
     if user is not None:
         return f"{name}:u:{user.id}"
-    forwarded = request.headers.get("x-forwarded-for")
-    client = (
-        forwarded.split(",")[0].strip()
-        if forwarded
-        else (request.client.host if request.client else "unknown")
-    )
-    return f"{name}:ip:{client}"
+    return f"{name}:ip:{_client_ip(request)}"
 
 
-def rate_limit(name: str):
+def _check(request: Request, name: str) -> None:
+    if get_settings().env == "test":
+        return
     limit = LIMITS[name]
+    key = _key(request, name)
+    now = time.monotonic()
+    count, started = _buckets[key]
+    if now - started >= limit.seconds:
+        _buckets[key] = (1, now)
+        return
+    if count >= limit.times:
+        logger.warning("rate_limited", extra={"limit": name})
+        raise RateLimited(
+            f"Too many requests. Try again in {int(limit.seconds - (now - started)) + 1}s.",
+            details={"limit": limit.times, "window_seconds": limit.seconds},
+        )
+    _buckets[key] = (count + 1, started)
 
-    async def _dep(request: Request) -> None:
-        if get_settings().env == "test":
-            return
-        key = _key(request, name)
-        now = time.monotonic()
-        count, started = _buckets[key]
-        if now - started >= limit.seconds:
-            _buckets[key] = (1, now)
-            return
-        if count >= limit.times:
-            logger.warning("rate_limited", extra={"limit": name})
-            raise RateLimited(
-                f"Too many requests. Try again in {int(limit.seconds - (now - started)) + 1}s.",
-                details={"limit": limit.times, "window_seconds": limit.seconds},
-            )
-        _buckets[key] = (count + 1, started)
 
-    return _dep
+def rate_limit(name: str, *, per_user: bool = False):
+    """FastAPI `dependencies=` run before path parameters.
+
+    Without `per_user=True` the AI/write limits would fire before
+    `current_user` wrote `request.state.user`, so every call would key by IP
+    even when a Bearer token was present.
+    """
+    if name not in LIMITS:
+        raise KeyError(name)
+
+    if per_user:
+
+        async def _authed(request: Request, user: CurrentUser) -> None:
+            request.state.user = user
+            _check(request, name)
+
+        return _authed
+
+    async def _anon(request: Request) -> None:
+        _check(request, name)
+
+    return _anon
 
 
 def reset_limits() -> None:
