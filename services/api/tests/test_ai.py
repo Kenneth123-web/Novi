@@ -490,6 +490,24 @@ async def test_discussion_summary_is_cached_after_the_first_call(
     assert len(calls) == 1
 
 
+async def test_translation_is_noop_when_already_in_target_language(
+    client: AsyncClient, onboarded: dict, fake_ai
+) -> None:
+    """iOS asks for 'English'; the store tags threads as 'en'."""
+    calls = fake_ai({"title": "T", "body": "B", "comments": []})
+    listing = await client.get("/discussions", headers=onboarded["headers"], params={"limit": 1})
+    discussion_id = listing.json()[0]["id"]
+
+    r = await client.post(
+        f"/discussions/{discussion_id}/translate",
+        headers=onboarded["headers"],
+        json={"translate_to": "English"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json().get("unchanged") is True
+    assert len(calls) == 0
+
+
 async def test_translation_drops_comments_when_the_count_does_not_match(
     client: AsyncClient, onboarded: dict, fake_ai
 ) -> None:

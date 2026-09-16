@@ -229,7 +229,7 @@ struct DiscussionView: View {
         do {
             translation = try await session.api.authed(
                 .post, "discussions/\(discussion.id)/translate",
-                body: TranslateBody(translateTo: "English"),
+                body: TranslateBody(translateTo: session.profile?.language ?? "en"),
                 as: TranslationDTO.self
             )
             showingTranslation = true

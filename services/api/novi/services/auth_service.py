@@ -198,10 +198,10 @@ async def skip_login(
     if not user.is_active or await console_client.is_blocked(str(user.id)):
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
 
-    # Skip is for exercising the product, including the questionnaire. A
-    # leftover onboarded_at from an API test would drop them straight into
-    # the feed with a dummy profile and no grade or stuck-on subject.
-    user.onboarded_at = None
+    # Skip is a login, not a reset. The client still opens the questionnaire
+    # when grade / stuck-on subjects are missing; wiping onboarded_at here
+    # made every Skip land on the welcome page even after the profile was
+    # filled in.
     user.last_seen_at = _now()
     tokens = await _issue(db, user, user_agent)
     console_client.spawn(

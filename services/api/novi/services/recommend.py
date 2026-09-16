@@ -17,9 +17,10 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novi.core.lang import language_key
 from novi.models import (
     MASTERY_RANK,
     Concept,
@@ -139,6 +140,7 @@ async def rank_feed(
     preferences = set(profile.learning_preferences) if profile else set()
     weak = set(profile.weak_subjects) if profile else set()
     stage_level = _learner_level(profile)
+    pref_lang = language_key(profile.language if profile else None) or "en"
 
     preferred_formats: set[str] = set()
     for pref in preferences:
@@ -172,7 +174,12 @@ async def rank_feed(
         wanted = [sid for sid, slug in subjects.items() if interests.get(slug, 0) > 0.05]
         if wanted:
             stmt = stmt.where(Content.subject_id.in_(wanted))
-    stmt = stmt.order_by(Content.quality.desc())
+    # Language first, then quality. A 250-row Chinese ingest otherwise fills
+    # the candidate window before English YouTube / Reddit rows are scored.
+    stmt = stmt.order_by(
+        case((Content.language.ilike(f"{pref_lang}%"), 0), else_=1),
+        Content.quality.desc(),
+    )
 
     candidates = [c for c in (await db.execute(stmt)).scalars() if c.id not in seen]
     if not candidates:

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from novi.ai.gateway import gateway
 from novi.ai.prompts import discussion as prompt
 from novi.core.errors import NotFound
+from novi.core.lang import language_key
 from novi.core.logging import get_logger
 from novi.models import Discussion
 
@@ -61,12 +62,14 @@ async def translate(
 ) -> dict:
     row = await _load(db, discussion_id)
     cached = row.translation or {}
-    if cached.get("language") == target_language and not force:
+    target_key = language_key(target_language)
+    cached_key = language_key(cached.get("language") if isinstance(cached, dict) else None)
+    if cached_key and cached_key == target_key and not force:
         return cached
 
-    if row.language == target_language:
+    if language_key(row.language) == target_key:
         # Nothing to do, and saying so is better than paying a model to return
-        # the input unchanged.
+        # the input unchanged. `en` and `English` are the same language.
         return {"language": target_language, "unchanged": True}
 
     comments = [c.body for c in row.comments_]

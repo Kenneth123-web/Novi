@@ -97,6 +97,40 @@ async def test_garbage_token_rejected(client: AsyncClient) -> None:
     assert r.json()["error"]["code"] == "TOKEN_INVALID"
 
 
+async def test_dev_skip_keeps_a_completed_profile(
+    client: AsyncClient, seeded: None
+) -> None:
+    """Skip is a login. Wiping onboarded_at trapped the developer account on
+    the questionnaire after the profile had already been filled in."""
+    first = await client.post("/auth/dev-skip", json={})
+    assert first.status_code == 200, first.text
+    headers = {"Authorization": f"Bearer {first.json()['tokens']['access_token']}"}
+    onboarded = await client.post(
+        "/onboarding",
+        headers=headers,
+        json={
+            "stage": "high",
+            "grade": "11",
+            "curriculum": "AP",
+            "subject_slugs": ["mathematics"],
+            "weak_subject_slugs": ["mathematics"],
+        },
+    )
+    assert onboarded.status_code == 200, onboarded.text
+    assert onboarded.json()["user"]["is_onboarded"] is True
+
+    again = await client.post("/auth/dev-skip", json={})
+    assert again.status_code == 200, again.text
+    assert again.json()["user"]["is_onboarded"] is True
+    me = await client.get(
+        "/me",
+        headers={"Authorization": f"Bearer {again.json()['tokens']['access_token']}"},
+    )
+    assert me.json()["user"]["is_onboarded"] is True
+    assert me.json()["profile"]["grade"] == "11"
+    assert me.json()["profile"]["weak_subjects"] == ["mathematics"]
+
+
 async def test_dev_skip_issues_a_real_session(client: AsyncClient) -> None:
     r = await client.post("/auth/dev-skip", json={})
     assert r.status_code == 200, r.text

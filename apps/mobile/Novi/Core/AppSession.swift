@@ -207,7 +207,10 @@ final class AppSession: ObservableObject {
     }
 
     private func apply(user: UserDTO) {
-        if user.isOnboarded && profileIsPersonalised(profile) {
+        // The questionnaire is about the profile, not the onboarded_at
+        // timestamp. Skip-login used to clear that timestamp on every tap,
+        // which would otherwise trap a completed profile on the welcome page.
+        if profileIsPersonalised(profile) {
             phase = .ready(user)
         } else {
             phase = .onboarding(user)
