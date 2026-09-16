@@ -65,6 +65,11 @@ def _check(request: Request, name: str) -> None:
     if get_settings().env == "test":
         return
     limit = LIMITS[name]
+    # Local skip/login retries from a phone and the simulator share one IP.
+    # Ten per minute is right for production; here it turns a second tap of
+    # "Skip as developer" into a false failure.
+    if name == "auth" and get_settings().env == "development":
+        limit = Limit(60, 60)
     key = _key(request, name)
     now = time.monotonic()
     count, started = _buckets[key]

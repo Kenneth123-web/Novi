@@ -15,10 +15,11 @@ struct APIError: Error, Equatable {
     /// Extra machine-readable detail, e.g. why the AI is unavailable.
     let reason: String?
 
-    static func transport(_ underlying: Error) -> APIError {
-        APIError(
+    static func transport(_ underlying: Error, reaching url: URL? = nil) -> APIError {
+        let whereAt = url?.host.map { " at \($0)" } ?? ""
+        return APIError(
             code: "NETWORK_UNREACHABLE",
-            message: "Can't reach the server. Check your connection and try again.",
+            message: "Can't reach the server\(whereAt). Same Wi-Fi as the Mac, then try again.",
             status: 0, requestID: nil, fieldErrors: [:], reason: nil
         )
     }

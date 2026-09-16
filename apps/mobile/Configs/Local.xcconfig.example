@@ -6,8 +6,10 @@
 DEVELOPMENT_TEAM = XXXXXXXXXX
 
 // Device builds. `//` starts a comment in xcconfig, so `http://` is written
-// as `http:/$()/`. The simulator ignores this and keeps using loopback.
+// as `http:/$()/`. The simulator ignores these and keeps using loopback.
 // NOV_API_BASE_URL = http:/$()/192.168.x.x:8000/v1
+// NOV_API_USB_URL = http:/$()/169.254.x.x:8000/v1
+// NOV_API_HOST_URL = http:/$()/Your-Mac.local:8000/v1
 
 // Only needed if luke.novi.app is already registered to someone else's team —
 // an explicit App ID is globally unique, so a device build under a different

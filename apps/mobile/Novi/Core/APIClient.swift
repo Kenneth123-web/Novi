@@ -19,40 +19,66 @@ actor APIClient {
         // generic "can't reach the server" for what is really a model outage.
         var timeout: TimeInterval = 150
 
-        /// Simulator → loopback. Device → `NOVAPIBaseURL` from Info.plist
-        /// (written by `Configs/Local.xcconfig`). `-apiBaseURL` still wins
-        /// when a launch argument is present.
+        /// Simulator → loopback. Device → Wi-Fi, USB and Bonjour URLs from
+        /// Info.plist, probed in order. `-apiBaseURL` still wins when a launch
+        /// argument is present.
+        var candidates: [URL] = []
+
         static var `default`: Config {
             if let raw = UserDefaults.standard.string(forKey: "apiBaseURL"),
                let url = URL(string: raw) {
-                return Config(baseURL: url)
+                return Config(baseURL: url, candidates: [url])
             }
-            #if !targetEnvironment(simulator)
-            if let raw = Bundle.main.object(forInfoDictionaryKey: "NOVAPIBaseURL") as? String {
-                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                if let url = URL(string: trimmed), !trimmed.isEmpty {
-                    return Config(baseURL: url)
+            var urls: [URL] = []
+            #if targetEnvironment(simulator)
+            urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
+            #else
+            for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL"] {
+                if let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String {
+                    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if let url = URL(string: trimmed), !trimmed.isEmpty {
+                        urls.append(url)
+                    }
                 }
             }
             #endif
-            return Config(baseURL: URL(string: "http://127.0.0.1:8000/v1")!)
+            if urls.isEmpty {
+                urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
+            }
+            var unique: [URL] = []
+            for url in urls where !unique.contains(url) { unique.append(url) }
+            return Config(baseURL: unique[0], candidates: unique)
         }
     }
 
-    private let config: Config
+    private var baseURL: URL
+    private let longTimeout: TimeInterval
+    private let candidates: [URL]
+    private var resolved = false
     private let session: URLSession
     private let tokens: TokenStore
     private var refreshTask: Task<TokenStore.Stored, Error>?
     private var onAuthenticationLost: (@Sendable () -> Void)?
 
     init(config: Config = .default, tokens: TokenStore = TokenStore()) {
-        self.config = config
+        self.baseURL = config.baseURL
+        self.longTimeout = config.timeout
+        self.candidates = config.candidates.isEmpty ? [config.baseURL] : config.candidates
         self.tokens = tokens
         let cfg = URLSessionConfiguration.ephemeral
-        // Generous: an AI call is a model round trip, not a database read.
+        // Ceiling for Ask/quiz. Auth and the rest set a much shorter
+        // timeout on the request itself — 150s of spinner on skip-login
+        // is how "can't reach the server" presented on a device.
         cfg.timeoutIntervalForRequest = config.timeout
+        cfg.timeoutIntervalForResource = config.timeout
         cfg.waitsForConnectivity = false
         self.session = URLSession(configuration: cfg)
+    }
+
+    /// Hits `/health` so iOS shows the local-network prompt on the sign-in
+    /// screen, and so a device build can pick Wi-Fi vs USB vs Bonjour.
+    func prepareNetwork() async {
+        await resolveBaseURL()
     }
 
     func setAuthenticationLostHandler(_ handler: @escaping @Sendable () -> Void) {
@@ -69,6 +95,7 @@ actor APIClient {
         query: [String: String] = [:],
         as: Response.Type = Response.self
     ) async throws -> Response {
+        await resolveBaseURL()
         let request = try makeRequest(method, path, body: body, query: query, token: nil)
         let (data, status) = try await perform(request)
         guard (200..<300).contains(status) else {
@@ -86,6 +113,7 @@ actor APIClient {
         query: [String: String] = [:],
         as: Response.Type = Response.self
     ) async throws -> Response {
+        await resolveBaseURL()
         var stored = try await validTokensAsync()
         var request = try makeRequest(method, path, body: body, query: query,
                                       token: stored.accessToken)
@@ -154,9 +182,10 @@ actor APIClient {
         let stored = try validTokens()
         if !force, stored.isAccessValid { return stored }
 
-        let task = Task<TokenStore.Stored, Error> { [config, session] in
-            var request = URLRequest(url: config.baseURL.appendingPathComponent("auth/refresh"))
+        let task = Task<TokenStore.Stored, Error> { [baseURL, session] in
+            var request = URLRequest(url: baseURL.appendingPathComponent("auth/refresh"))
             request.httpMethod = "POST"
+            request.timeoutInterval = 12
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(["refresh_token": stored.refreshToken])
             let (data, response) = try await session.data(for: request)
@@ -196,13 +225,14 @@ actor APIClient {
         token: String?
     ) throws -> URLRequest {
         var components = URLComponents(
-            url: config.baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
+            url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
         )!
         if !query.isEmpty {
             components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         var request = URLRequest(url: components.url!)
         request.httpMethod = method.rawValue
+        request.timeoutInterval = isLongRunning(path) ? longTimeout : 12
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -219,7 +249,46 @@ actor APIClient {
             let (data, response) = try await session.data(for: request)
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
-            throw APIError.transport(error)
+            throw APIError.transport(error, reaching: request.url)
+        }
+    }
+
+    private func isLongRunning(_ path: String) -> Bool {
+        path == "ask" || path == "quiz" || path.hasPrefix("quiz/")
+            || path.hasSuffix("/summarize") || path.hasSuffix("/translate")
+    }
+
+    private func resolveBaseURL() async {
+        if resolved { return }
+        for url in candidates {
+            if await ping(url) {
+                baseURL = url
+                resolved = true
+                return
+            }
+        }
+    }
+
+    private func ping(_ base: URL) async -> Bool {
+        var request = URLRequest(url: base.appendingPathComponent("health"))
+        request.httpMethod = "GET"
+        request.timeoutInterval = 2
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 2
+        cfg.timeoutIntervalForResource = 2
+        cfg.waitsForConnectivity = false
+        let probe = URLSession(configuration: cfg)
+        defer { probe.finishTasksAndInvalidate() }
+        do {
+            let (data, response) = try await probe.data(for: request)
+            guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
+            guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return false
+            }
+            return obj["status"] as? String == "ok"
+        } catch {
+            return false
         }
     }
 

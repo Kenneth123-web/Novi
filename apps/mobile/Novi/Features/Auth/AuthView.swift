@@ -70,6 +70,7 @@ struct AuthView: View {
         // Clearing on a mode flip stops "that email is already taken" sitting
         // above a sign-in form where it makes no sense.
         .onChange(of: mode) { _, _ in error = nil }
+        .task { await session.prepareNetwork() }
     }
 
     private var header: some View {

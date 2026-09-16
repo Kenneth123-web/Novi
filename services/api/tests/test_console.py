@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import time
+
 import httpx
 import pytest
 import respx
@@ -26,6 +29,10 @@ async def test_register_ingests_account(
     )
     r = await client.post("/auth/register", json=registration)
     assert r.status_code == 201, r.text
+    for _ in range(40):
+        if route.called:
+            break
+        await asyncio.sleep(0.05)
     assert route.called
     payload = route.calls.last.request.content
     assert registration["email"].encode() in payload
@@ -101,3 +108,21 @@ async def test_internal_without_secret_is_absent(
     )
     assert r.status_code == 404
     get_settings.cache_clear()
+
+
+@respx.mock
+async def test_dev_skip_caps_a_hung_console_status(
+    client: AsyncClient, console_origin: None
+) -> None:
+    async def hang(_request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(30)
+        return httpx.Response(200, json={"is_active": True})
+
+    respx.get(url__regex=r"https://console\.test/api/ingest/status/.*").mock(side_effect=hang)
+    respx.post("https://console.test/api/ingest/account").mock(
+        return_value=httpx.Response(204)
+    )
+    started = time.perf_counter()
+    r = await client.post("/auth/dev-skip", json={})
+    assert r.status_code == 200, r.text
+    assert time.perf_counter() - started < 5

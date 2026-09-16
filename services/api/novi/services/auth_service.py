@@ -102,8 +102,10 @@ async def register(
 
     tokens = await _issue(db, user, user_agent)
     logger.info("user_registered", extra={"new_user_id": str(user.id)})
-    await console_client.report_account(
-        user, event="registered", source="register", user_agent=user_agent
+    console_client.spawn(
+        console_client.report_account(
+            user, event="registered", source="register", user_agent=user_agent
+        )
     )
     return user, tokens
 
@@ -120,8 +122,10 @@ async def login(
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
     user.last_seen_at = _now()
     tokens = await _issue(db, user, user_agent)
-    await console_client.report_account(
-        user, event="logged_in", source="login", user_agent=user_agent
+    console_client.spawn(
+        console_client.report_account(
+            user, event="logged_in", source="login", user_agent=user_agent
+        )
     )
     return user, tokens
 
@@ -196,8 +200,10 @@ async def skip_login(
 
     user.last_seen_at = _now()
     tokens = await _issue(db, user, user_agent)
-    await console_client.report_account(
-        user, event="dev_skipped", source="dev-skip", user_agent=user_agent
+    console_client.spawn(
+        console_client.report_account(
+            user, event="dev_skipped", source="dev-skip", user_agent=user_agent
+        )
     )
     logger.info("dev_skip_login", extra={"user_id": str(user.id)})
     return user, tokens

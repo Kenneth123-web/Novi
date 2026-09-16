@@ -49,6 +49,10 @@ final class AppSession: ObservableObject {
                 self?.profile = nil
             }
         }
+        // Local-network permission + picking Wi-Fi/USB/Bonjour happen here,
+        // not on the first skip tap — that tap used to sit behind a 150s
+        // timeout and then say the server was unreachable.
+        await api.prepareNetwork()
 
         if Demo.resetSession { await api.signOutLocally() }
 
@@ -94,6 +98,10 @@ final class AppSession: ObservableObject {
         )
         await api.store(response.tokens)
         apply(user: response.user)
+    }
+
+    func prepareNetwork() async {
+        await api.prepareNetwork()
     }
 
     func signIn(email: String, password: String) async throws {

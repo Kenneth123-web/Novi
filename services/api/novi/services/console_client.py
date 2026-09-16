@@ -5,8 +5,9 @@ place the origin writes to it. Two rules:
 
 * A missing CONSOLE_BASE_URL is a no-op, not an error. Tests and a fresh
   clone must not depend on Cloudflare being up.
-* A console outage must not take the product down. Account ingest is awaited
-  with a short timeout and swallowed; per-request usage is fire-and-forget.
+* A console outage must not take the product down. Account ingest is
+  fire-and-forget with a hard timeout; per-request usage is the same.
+  Status reads fail open.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from novi.models import User
 logger = get_logger(__name__)
 
 _TIMEOUT = httpx.Timeout(2.5, connect=1.0)
+_HARD_CAP = 2.6
 _tasks: set[asyncio.Task[None]] = set()
 
 
@@ -40,20 +42,23 @@ async def _post(path: str, payload: dict[str, Any]) -> None:
         return
     base, secret = cfg
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            response = await client.post(
-                f"{base}{path}",
-                json=payload,
-                headers={
-                    "content-type": "application/json",
-                    "x-novi-origin-secret": secret,
-                },
-            )
+        async with asyncio.timeout(_HARD_CAP):
+            async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
+                response = await client.post(
+                    f"{base}{path}",
+                    json=payload,
+                    headers={
+                        "content-type": "application/json",
+                        "x-novi-origin-secret": secret,
+                    },
+                )
             if response.status_code >= 400:
                 logger.warning(
                     "console_ingest_rejected",
                     extra={"path": path, "status": response.status_code},
                 )
+    except TimeoutError:
+        logger.warning("console_ingest_timeout", extra={"path": path})
     except Exception as exc:
         logger.warning("console_ingest_failed", extra={"path": path, "error": type(exc).__name__})
 
@@ -64,11 +69,12 @@ async def _get_json(path: str) -> dict[str, Any] | None:
         return None
     base, secret = cfg
     try:
-        async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-            response = await client.get(
-                f"{base}{path}",
-                headers={"x-novi-origin-secret": secret},
-            )
+        async with asyncio.timeout(_HARD_CAP):
+            async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
+                response = await client.get(
+                    f"{base}{path}",
+                    headers={"x-novi-origin-secret": secret},
+                )
     except Exception as exc:
         logger.warning("console_read_failed", extra={"path": path, "error": type(exc).__name__})
         return None
