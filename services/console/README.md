@@ -35,9 +35,9 @@ lands in the product without a password; this Worker then records that as
 
 ## Deploy
 
-Use the Cloudflare account already logged in on **this machine**
-(`npx wrangler whoami`). Do not paste another project's `account_id` into
-`wrangler.jsonc`.
+Deploys to **this machine's** Cloudflare account
+(`kennethhuang0207@gmail.com`, pinned in `wrangler.jsonc`). Do not paste
+another project's `account_id`.
 
 ```bash
 cd services/console
@@ -50,10 +50,14 @@ npx wrangler secret put CONSOLE_ORIGIN_SECRET   # openssl rand -base64 48
 npx wrangler deploy
 ```
 
+Live admin site (this machine's account):
+
+https://novi-console.rememberly-kenneth.workers.dev
+
 Then in the API's `.env`:
 
 ```
-CONSOLE_BASE_URL=https://novi-console.<your-subdomain>.workers.dev
+CONSOLE_BASE_URL=https://novi-console.rememberly-kenneth.workers.dev
 CONSOLE_ORIGIN_SECRET=<the same secret>
 ```
 
