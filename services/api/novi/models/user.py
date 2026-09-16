@@ -65,6 +65,11 @@ class Profile(Base, TimestampMixin):
     learning_preferences: Mapped[list[str]] = mapped_column(
         ARRAY(String(48)), nullable=False, default=list
     )
+    # Subjects the learner said they are stuck on. Ranking boosts `gap` here
+    # so the feed teaches the hard class rather than only the favourite one.
+    weak_subjects: Mapped[list[str]] = mapped_column(
+        ARRAY(String(48)), nullable=False, default=list, server_default="{}"
+    )
     goals: Mapped[list[str]] = mapped_column(ARRAY(String(48)), nullable=False, default=list)
 
     language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")

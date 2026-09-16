@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Five screens, one question each.
+/// Six screens, one question each.
 ///
-/// One question per screen rather than one long form: these answers are what
-/// the entire feed is built from, and a scrolling wall of thirty checkboxes
-/// gets skimmed and half-answered. The cost is five taps, and the step bar is
-/// there so those five are visibly finite.
+/// Grade and the subjects they are stuck on are not optional colour: they are
+/// what the ranker and the tutor actually read. Skip-login still lands here
+/// until those answers exist — a developer account with no profile is not a
+/// personalised feed.
 ///
 /// Nothing is sent until the last step. The API takes the whole questionnaire
 /// in one request, so a learner who abandons on step three leaves no
@@ -15,25 +15,22 @@ struct OnboardingView: View {
 
     @State private var step = 0
     @State private var stage: String?
-    @State private var grade = ""
+    @State private var grade: String?
     @State private var curriculum: String?
     /// An array, not a set: the order the learner picks subjects in IS the
     /// priority, and the server seeds interest weights from it.
     @State private var subjects: [String] = []
+    @State private var weak: [String] = []
     @State private var preferences: Set<String> = []
     @State private var goals: Set<String> = []
 
     @State private var busy = false
     @State private var error: APIError?
 
-    private let totalSteps = 5
+    private let totalSteps = 6
 
     var body: some View {
         ZStack {
-            // Behind the chrome as well as the content. A backdrop inside the
-            // TabView page is clipped to that page and leaves a white band
-            // above and below it. Strength falls away after the welcome so
-            // the questionnaire itself stays quiet enough to read.
             AuroraBackdrop(strength: step == 0 ? 0.34 : 0.08)
                 .animation(.easeInOut(duration: 0.5), value: step)
 
@@ -42,153 +39,139 @@ struct OnboardingView: View {
 
             TabView(selection: $step) {
                 welcomeStep.tag(0)
-                stageStep.tag(1)
+                schoolStep.tag(1)
                 subjectStep.tag(2)
-                preferenceStep.tag(3)
-                goalStep.tag(4)
+                weakStep.tag(3)
+                preferenceStep.tag(4)
+                goalStep.tag(5)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            // The page style is for the transition, not the gesture: swiping
-            // past an unanswered question would skip a required answer, so
-            // paging is driven only by the button.
-            .disabled(busy)
+            .animation(.easeInOut(duration: 0.25), value: step)
 
-            footer
+            if let error {
+                Text(error.message)
+                    .font(NV.small)
+                    .foregroundStyle(NV.error)
+                    .padding(.horizontal, NV.pageMargin)
+                    .padding(.bottom, 8)
+            }
+
+            bottomBar
             }
         }
-        .background(NV.page)
         .task { await session.loadSubjects() }
     }
 
     private var topBar: some View {
-        VStack(spacing: NV.Space.m) {
-            HStack {
-                if step > 0 {
-                    Button {
-                        withAnimation { step -= 1 }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(NV.ink)
-                    }
-                    .buttonStyle(.plain)
+        HStack {
+            if step > 0 {
+                Button {
+                    withAnimation { step -= 1 }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(NV.ink)
+                        .frame(width: 36, height: 36)
                 }
-                Spacer()
-                Text("\(step + 1) / \(totalSteps)")
-                    .font(NV.caption)
-                    .foregroundStyle(NV.inkTertiary)
             }
-            .frame(height: 24)
-
-            NVStepBar(step: step, total: totalSteps)
+            Spacer()
+            if step > 0 {
+                HStack(spacing: 5) {
+                    ForEach(1..<totalSteps, id: \.self) { i in
+                        Capsule()
+                            .fill(i <= step ? NV.ink900 : NV.track)
+                            .frame(width: i == step ? 18 : 7, height: 7)
+                    }
+                }
+            }
+            Spacer()
+            Color.clear.frame(width: 36, height: 36)
         }
         .padding(.horizontal, NV.pageMargin)
-        .padding(.top, NV.Space.s)
-        .padding(.bottom, NV.Space.l)
+        .padding(.top, 8)
+        .padding(.bottom, 4)
     }
 
-    private var footer: some View {
-        VStack(spacing: NV.Space.m) {
-            if let error {
-                NVErrorNote(message: error.message, retry: error.isRetryable ? advance : nil)
-            }
+    private var bottomBar: some View {
+        VStack(spacing: NV.Space.s) {
             NVButton(
-                title: step == 0 ? "Get started" : (step == totalSteps - 1 ? "Start learning" : "Continue"),
+                title: step == 0 ? "Let's go" : (step == totalSteps - 1 ? "Start learning" : "Continue"),
                 loading: busy,
-                enabled: canAdvance,
-                action: advance
-            )
+                enabled: canAdvance
+            ) {
+                advance()
+            }
+            .padding(.horizontal, NV.pageMargin)
         }
-        .padding(.horizontal, NV.pageMargin)
-        .padding(.bottom, NV.Space.l)
+        .padding(.bottom, 24)
+        .padding(.top, 8)
+    }
+
+    private var canAdvance: Bool {
+        switch step {
+        case 0: true
+        case 1: stage != nil && grade != nil
+        case 2: !subjects.isEmpty
+        case 3: !weak.isEmpty
+        default: true
+        }
     }
 
     // MARK: Steps
 
-    private func page<Content: View>(
-        _ title: String, _ subtitle: String, @ViewBuilder content: () -> Content
-    ) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: NV.Space.l) {
-                VStack(alignment: .leading, spacing: NV.Space.s) {
-                    Text(title).font(NV.h1).foregroundStyle(NV.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text(subtitle).font(NV.small).foregroundStyle(NV.inkTertiary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                content()
-                Spacer(minLength: NV.Space.xl)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, NV.pageMargin)
-        }
-    }
-
-    /// The welcome carries the opening's backdrop and mark, so finishing the
-    /// animation and starting the questionnaire is one continuous arrival
-    /// rather than two unrelated screens.
     private var welcomeStep: some View {
-        VStack(alignment: .leading, spacing: NV.Space.xl) {
-                Spacer(minLength: 0)
-
-                BrandMark(progress: BrandMark.filled, size: 64)
-
-                VStack(alignment: .leading, spacing: NV.Space.m) {
-                    Text("Welcome to your\nlearning world.")
-                        .displayStyle(10)
-                        .foregroundStyle(NV.ink)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Five quick questions, and your feed stops being random.")
-                        .font(NV.body)
-                        .foregroundStyle(NV.inkSecondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(alignment: .leading, spacing: NV.Space.m) {
-                    promise("sparkles", "Ask anything", "A tutor that knows your level")
-                    promise("safari", "Follow the thread", "Videos, posts and arguments on one idea")
-                    promise("checkmark.seal", "Keep what you learn", "A passport of every concept you master")
-                }
-                .padding(.top, NV.Space.xs)
-
-            Spacer(minLength: 0)
-            Spacer(minLength: 0)
+        VStack(alignment: .leading, spacing: NV.Space.l) {
+            Spacer()
+            Text("Before the feed,")
+                .displayStyle(8)
+                .foregroundStyle(NV.ink)
+            Text("a few things about you.")
+                .font(NV.h2)
+                .foregroundStyle(NV.inkSecondary)
+            Text("Grade, what you study, and where you are stuck. That is what the feed and the tutor are built from — not a generic “for you”.")
+                .font(NV.body)
+                .foregroundStyle(NV.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
         }
         .padding(.horizontal, NV.pageMargin)
     }
 
-    private func promise(_ icon: String, _ title: String, _ detail: String) -> some View {
-        HStack(spacing: NV.Space.m) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(NV.spark)
-                .frame(width: 38, height: 38)
-                .background(
-                    NV.surface.opacity(0.85),
-                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .strokeBorder(NV.hairline, lineWidth: 1)
+    private var schoolStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.xl) {
+                stepHeading("Where are you in school?", "This sets the level of every explanation.")
+                FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                    ForEach(Onb.stages) { option in
+                        NVChip(text: option.label, icon: option.icon, selected: stage == option.slug) {
+                            if stage != option.slug {
+                                stage = option.slug
+                                if let grade, !Onb.grades(for: option.slug).contains(where: { $0.slug == grade }) {
+                                    self.grade = nil
+                                }
+                            }
+                        }
+                    }
                 }
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(NV.bodyStrong).foregroundStyle(NV.ink)
-                Text(detail).font(NV.small).foregroundStyle(NV.inkTertiary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
 
-    private var stageStep: some View {
-        page("What do you study?", "This sets where explanations start.") {
-            VStack(spacing: NV.Space.m) {
-                cards(Onb.stages, selection: stage.map { [$0] } ?? []) { stage = $0 }
-
-                if stage != nil {
+                if let stage {
                     VStack(alignment: .leading, spacing: NV.Space.s) {
-                        Text("Exam system").font(NV.h3).foregroundStyle(NV.ink)
-                        Text("Optional — it tunes the level, not the subjects.")
-                            .font(NV.small).foregroundStyle(NV.inkTertiary)
+                        Text("GRADE")
+                            .font(NV.caption)
+                            .foregroundStyle(NV.inkTertiary)
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(Onb.grades(for: stage)) { option in
+                                NVChip(text: option.label, selected: grade == option.slug) {
+                                    grade = option.slug
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: NV.Space.s) {
+                        Text("CURRICULUM · OPTIONAL")
+                            .font(NV.caption)
+                            .foregroundStyle(NV.inkTertiary)
                         FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                             ForEach(Onb.curricula) { option in
                                 NVChip(text: option.label, selected: curriculum == option.slug) {
@@ -197,26 +180,18 @@ struct OnboardingView: View {
                             }
                         }
                     }
-                    .padding(.top, NV.Space.s)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
                 }
             }
-            .animation(.easeOut(duration: 0.2), value: stage)
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
         }
+        .scrollIndicators(.hidden)
     }
 
     private var subjectStep: some View {
-        page(
-            "What do you want to learn?",
-            subjects.isEmpty
-                ? "Pick as many as you like. Tap order is priority."
-                : "Priority: \(subjectNames)"
-        ) {
-            if session.subjects.isEmpty {
-                VStack(spacing: NV.Space.s) {
-                    ForEach(0..<4, id: \.self) { _ in NVSkeleton(height: 38) }
-                }
-            } else {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.l) {
+                stepHeading("What are you studying?", "Tap order is priority. The first subject leads your feed.")
                 FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                     ForEach(session.subjects) { subject in
                         let rank = subjects.firstIndex(of: subject.slug)
@@ -224,130 +199,143 @@ struct OnboardingView: View {
                             text: rank == nil ? subject.name : "\(rank! + 1). \(subject.name)",
                             selected: rank != nil
                         ) {
-                            toggleSubject(subject.slug)
+                            if let rank {
+                                subjects.remove(at: rank)
+                                weak.removeAll { $0 == subject.slug }
+                            } else {
+                                subjects.append(subject.slug)
+                            }
                         }
                     }
                 }
             }
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
         }
+        .scrollIndicators(.hidden)
+    }
+
+    private var weakStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.l) {
+                stepHeading(
+                    "Where are you stuck?",
+                    "Pick the subjects that feel hardest right now. Novi spends more of the feed, and more care in explanations, here."
+                )
+                let chosen = session.subjects.filter { subjects.contains($0.slug) }
+                FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                    ForEach(chosen) { subject in
+                        NVChip(
+                            text: subject.name,
+                            selected: weak.contains(subject.slug)
+                        ) {
+                            if let idx = weak.firstIndex(of: subject.slug) {
+                                weak.remove(at: idx)
+                            } else {
+                                weak.append(subject.slug)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private var preferenceStep: some View {
-        page("How do you like to learn?", "Your feed leans towards what you pick.") {
-            FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                ForEach(Onb.preferences) { option in
-                    NVChip(
-                        text: option.label, icon: option.icon,
-                        selected: preferences.contains(option.slug)
-                    ) {
-                        toggle(option.slug, in: &preferences)
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.l) {
+                stepHeading("How do you like to learn?", "Optional. Skip if you are not sure.")
+                FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                    ForEach(Onb.preferences) { option in
+                        NVChip(
+                            text: option.label,
+                            icon: option.icon,
+                            selected: preferences.contains(option.slug)
+                        ) {
+                            if preferences.contains(option.slug) { preferences.remove(option.slug) }
+                            else { preferences.insert(option.slug) }
+                        }
                     }
                 }
             }
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
         }
+        .scrollIndicators(.hidden)
     }
 
     private var goalStep: some View {
-        page("What are you trying to achieve?", "Pick any that fit.") {
-            cards(Onb.goals, selection: goals) { toggle($0, in: &goals) }
-        }
-    }
-
-    private func cards(
-        _ options: [Onb.Option], selection: Set<String>, onTap: @escaping (String) -> Void
-    ) -> some View {
-        VStack(spacing: NV.Space.s) {
-            ForEach(options) { option in
-                let on = selection.contains(option.slug)
-                Button { onTap(option.slug) } label: {
-                    HStack(spacing: NV.Space.m) {
-                        if !option.icon.isEmpty {
-                            Image(systemName: option.icon)
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(on ? NV.spark : NV.inkTertiary)
-                                .frame(width: 24)
-                        }
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(option.label).font(NV.bodyStrong).foregroundStyle(NV.ink)
-                            if !option.detail.isEmpty {
-                                Text(option.detail).font(NV.caption).foregroundStyle(NV.inkTertiary)
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.l) {
+                stepHeading("What are you here for?", "Optional. This colours the tutor, not the feed.")
+                VStack(alignment: .leading, spacing: NV.Space.s) {
+                    ForEach(Onb.goals) { option in
+                        Button {
+                            if goals.contains(option.slug) { goals.remove(option.slug) }
+                            else { goals.insert(option.slug) }
+                        } label: {
+                            HStack(alignment: .top, spacing: NV.Space.m) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.label).font(NV.bodyStrong).foregroundStyle(NV.ink)
+                                    Text(option.detail).font(NV.small).foregroundStyle(NV.inkTertiary)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: goals.contains(option.slug) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(goals.contains(option.slug) ? NV.spark : NV.track)
                             }
+                            .padding(NV.Space.m)
+                            .cardSurface()
                         }
-                        Spacer(minLength: 0)
-                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 20))
-                            .foregroundStyle(on ? NV.spark : NV.inkGhost)
-                    }
-                    .padding(NV.Space.l)
-                    .background(NV.surface, in: RoundedRectangle(cornerRadius: NV.Radius.card,
-                                                                 style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous)
-                            .stroke(on ? NV.spark : NV.hairline, lineWidth: on ? 1.5 : 1)
+                        .buttonStyle(.plain)
                     }
                 }
-                .buttonStyle(.plain)
             }
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
         }
-        .animation(.easeOut(duration: 0.12), value: selection)
+        .scrollIndicators(.hidden)
     }
 
-    // MARK: Logic
-
-    private var subjectNames: String {
-        subjects
-            .compactMap { slug in session.subjects.first { $0.slug == slug }?.name }
-            .joined(separator: " · ")
-    }
-
-    private func toggleSubject(_ slug: String) {
-        if let index = subjects.firstIndex(of: slug) {
-            subjects.remove(at: index)
-        } else {
-            subjects.append(slug)
-        }
-    }
-
-    private func toggle(_ slug: String, in set: inout Set<String>) {
-        if set.contains(slug) { set.remove(slug) } else { set.insert(slug) }
-    }
-
-    /// Only stage and subjects are required. Making all five mandatory turns
-    /// an optional preference into a wall, and the recommender has sensible
-    /// defaults for the rest.
-    private var canAdvance: Bool {
-        switch step {
-        case 1: return stage != nil
-        case 2: return !subjects.isEmpty
-        default: return true
+    private func stepHeading(_ title: String, _ subtitle: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(NV.h1)
+                .foregroundStyle(NV.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            Text(subtitle)
+                .font(NV.body)
+                .foregroundStyle(NV.inkTertiary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private func advance() {
-        guard canAdvance else { return }
-        error = nil
-        guard step == totalSteps - 1 else {
+        if step < totalSteps - 1 {
             withAnimation { step += 1 }
             return
         }
-        guard let stage else { return }
-
+        guard let stage, let grade, !subjects.isEmpty, !weak.isEmpty else { return }
         busy = true
+        error = nil
         Task {
             do {
                 try await session.completeOnboarding(
                     OnboardingBody(
                         stage: stage,
-                        grade: grade.isEmpty ? nil : grade,
+                        grade: grade,
                         curriculum: curriculum,
                         subjectSlugs: subjects,
+                        weakSubjectSlugs: weak,
                         learningPreferences: Array(preferences),
                         goals: Array(goals),
                         language: "en"
                     )
                 )
-            } catch let apiError as APIError {
-                error = apiError
+            } catch let e as APIError {
+                error = e
             } catch {
                 self.error = APIError.transport(error)
             }

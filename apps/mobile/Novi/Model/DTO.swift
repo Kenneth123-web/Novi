@@ -28,6 +28,7 @@ struct ProfileDTO: Decodable, Equatable {
     let curriculum: String?
     let subjectOrder: [String]
     let subjectInterests: [String: Double]
+    let weakSubjects: [String]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -368,9 +369,10 @@ struct RefreshBody: Encodable {
 
 struct OnboardingBody: Encodable {
     let stage: String
-    let grade: String?
+    let grade: String
     let curriculum: String?
     let subjectSlugs: [String]
+    let weakSubjectSlugs: [String]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -424,7 +426,11 @@ struct ProjectBody: Encodable {
 struct ProfilePatchBody: Encodable {
     var displayName: String?
     var bio: String?
+    var stage: String?
+    var grade: String?
+    var curriculum: String?
     var subjectSlugs: [String]?
+    var weakSubjectSlugs: [String]?
     var learningPreferences: [String]?
     var goals: [String]?
 }

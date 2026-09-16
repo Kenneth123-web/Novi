@@ -68,9 +68,11 @@ secret. It is not a fake phase: the tokens are the same shape login returns.
 `GET /me` · `PATCH /me` · `POST /onboarding` ·
 `GET /onboarding/options` · `GET /me/history?days=14`
 
-Onboarding submits the whole questionnaire once. `subject_slugs` order is
-priority and is preserved: the first subject leads the feed and gets the
-highest starting interest weight. `PATCH /me` with `subject_slugs` keeps
+Onboarding submits the whole questionnaire once. `grade` and
+`weak_subject_slugs` are required: they are what the ranker and the tutor
+read. `subject_slugs` order is priority and is preserved: the first subject
+leads the feed and gets the highest starting interest weight. `weak_subject_slugs`
+must be a subset of `subject_slugs`. `PATCH /me` with `subject_slugs` keeps
 existing weights for subjects already present — re-seeding would wipe interest
 the learner earned by using the app.
 
@@ -126,3 +128,11 @@ quiz.
 
 Both return `new_stamps` containing only what *this* request earned, so the
 client plays the celebration once rather than every time the passport opens.
+
+### Tutorial ingest
+`POST /internal/ingest` (origin secret) or `./scripts/dev.sh ingest`.
+
+Pulls real tutorials from YouTube, Reddit, X, and MediaCrawler platforms
+(Bilibili search live; Xiaohongshu/Douyin/Zhihu via MediaCrawler JSON dumps in
+`MEDIACRAWLER_DATA_DIR`). Matched rows are stored `is_sample=false` with the
+source URL. Unmatched titles are dropped, not forced onto a random concept.

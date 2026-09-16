@@ -16,6 +16,7 @@ from novi.schemas.profile import (
     STAGES,
     OnboardingRequest,
     ProfileUpdate,
+    allowed_grades,
 )
 
 # Interest weight a subject starts at when picked in onboarding, by rank.
@@ -67,11 +68,42 @@ async def _validate_subjects(db: AsyncSession, slugs: list[str]) -> None:
         )
 
 
+def _validate_grade(stage: str, grade: str | None) -> None:
+    if not grade:
+        raise ValidationFailed(
+            "Grade is required",
+            details={"field": "grade", "allowed": allowed_grades(stage)},
+        )
+    allowed = allowed_grades(stage)
+    if grade not in allowed:
+        raise ValidationFailed(
+            "Unknown grade for this stage",
+            details={"field": "grade", "allowed": allowed},
+        )
+
+
+def _validate_weak(slugs: list[str], weak: list[str]) -> list[str]:
+    chosen = list(dict.fromkeys(weak))
+    unknown = [s for s in chosen if s not in slugs]
+    if unknown:
+        raise ValidationFailed(
+            "Stuck-on subjects must be among the subjects you picked",
+            details={"field": "weak_subject_slugs", "unknown": unknown},
+        )
+    if not chosen:
+        raise ValidationFailed(
+            "Pick at least one subject you are stuck on",
+            details={"field": "weak_subject_slugs"},
+        )
+    return chosen
+
+
 async def apply_onboarding(
     db: AsyncSession, user: User, body: OnboardingRequest
 ) -> Profile:
     if body.stage not in STAGES:
         raise ValidationFailed("Unknown stage", details={"field": "stage", "allowed": STAGES})
+    _validate_grade(body.stage, body.grade)
     if body.curriculum and body.curriculum not in CURRICULA:
         raise ValidationFailed(
             "Unknown curriculum", details={"field": "curriculum", "allowed": CURRICULA}
@@ -83,6 +115,7 @@ async def apply_onboarding(
     # the caller's ordering is preserved.
     slugs = list(dict.fromkeys(body.subject_slugs))
     await _validate_subjects(db, slugs)
+    weak = _validate_weak(slugs, body.weak_subject_slugs)
 
     profile = await get_or_create(db, user)
     profile.stage = body.stage
@@ -90,6 +123,7 @@ async def apply_onboarding(
     profile.curriculum = body.curriculum
     profile.subject_order = slugs
     profile.subject_interests = _seed_interests(slugs)
+    profile.weak_subjects = weak
     profile.learning_preferences = list(body.learning_preferences)
     profile.goals = list(body.goals)
     profile.language = body.language
@@ -134,8 +168,20 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
             if slug not in slugs:
                 del merged[slug]
         profile.subject_interests = merged
+        # Dropping a subject drops it from the stuck-on list too.
+        profile.weak_subjects = [s for s in profile.weak_subjects if s in slugs]
 
-    for field in ("grade", "language", "bio"):
+    if body.weak_subject_slugs is not None:
+        profile.weak_subjects = _validate_weak(
+            list(profile.subject_order), body.weak_subject_slugs
+        )
+
+    if body.grade is not None:
+        stage = body.stage if body.stage is not None else profile.stage
+        _validate_grade(stage or "other", body.grade)
+        profile.grade = body.grade
+
+    for field in ("language", "bio"):
         value = getattr(body, field)
         if value is not None:
             setattr(profile, field, value)

@@ -20,6 +20,7 @@ from novi.core.ratelimit import rate_limit
 from novi.core.security import secret_matches
 from novi.models import Session, User
 from novi.schemas.common import Ok
+from novi.services.ingest.run import run as run_ingest
 
 router = APIRouter(
     prefix="/internal",
@@ -72,3 +73,10 @@ async def revoke_sessions(
     _require_origin(x_novi_origin_secret)
     await db.execute(delete(Session).where(Session.user_id == user_id))
     return Ok()
+
+
+@router.post("/ingest")
+async def ingest(x_novi_origin_secret: str | None = Header(default=None)) -> dict:
+    """Fetch tutorials from YouTube, Reddit, X and MediaCrawler platforms."""
+    _require_origin(x_novi_origin_secret)
+    return await run_ingest()

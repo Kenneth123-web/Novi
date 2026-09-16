@@ -33,6 +33,7 @@ PLATFORMS = (
     "zhihu",
     "reddit",
     "youtube",
+    "x",
 )
 
 

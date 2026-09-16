@@ -7,6 +7,7 @@ from novi.schemas.auth import UserOut
 from novi.schemas.profile import (
     CURRICULA,
     GOALS,
+    GRADES_BY_STAGE,
     LEARNING_PREFERENCES,
     STAGES,
     MeOut,
@@ -47,6 +48,7 @@ async def onboarding_options() -> dict:
     """
     return {
         "stages": STAGES,
+        "grades_by_stage": GRADES_BY_STAGE,
         "curricula": CURRICULA,
         "learning_preferences": LEARNING_PREFERENCES,
         "goals": GOALS,

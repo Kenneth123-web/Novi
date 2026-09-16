@@ -141,24 +141,24 @@ not apply fails the test run rather than the deploy.
 
 ## What is real and what is a stand-in
 
-**The content store is seeded with generated placeholders.** Every row is
-written `is_sample = true` and the client draws a "Sample" marker on it. Creator
-handles are invented and generic, and no URLs are fabricated — a plausible
-bilibili link that 404s invites a tap, and a post credited to a real account
-would be a fake record about a real party. Replace `database/seeds/content.py`
-with a real ingestion pipeline and the flag goes away on its own.
+**Tutorials are ingested, not invented.** `./scripts/dev.sh ingest` pulls real
+watch/discussion URLs from YouTube (channel RSS, optional Data API, Invidious),
+Reddit, X, and MediaCrawler platforms — live Bilibili search using the same
+public search [MediaCrawler](https://github.com/NanmiCoder/MediaCrawler) uses,
+plus JSON/JSONL dumps for cookie-gated apps (Xiaohongshu, Douyin, Zhihu, …).
+Chinese titles are stored with the English catalog name in front so the feed
+stays readable. Rows land `is_sample = false` with a working URL; once enough
+real items exist, generated stand-ins are deleted. Until that run, seeded
+placeholders still show a "Sample" marker.
 
-**Cover images are drawn, not fetched.** There are no photographs behind this
-feed, and a grid of grey rectangles reads as a broken image rather than as a
-layout. Each cover is a deterministic function of the item's id, so the same
-item draws the same picture on every launch and the masonry is a stable grid
-instead of noise. See `Components/GeneratedArt.swift`.
+**Cover images prefer the source thumbnail.** A missing image falls back to the
+drawn cover so the masonry does not become a grid of broken-image holes.
 
 **Live AI works.** Ask, quizzes, discussion translation and summaries all run
-against Grok through the configured gateway; a full explanation lands in
-roughly 6-30 seconds. When the gateway has no capacity — which it periodically
-does not — the API maps that to a structured `AI_UNAVAILABLE` and the app
-shows a "tutor is offline" state while everything else keeps working.
+against the configured gateway; a full explanation lands in roughly 6-30
+seconds. When the gateway has no capacity the API maps that to a structured
+`AI_UNAVAILABLE` and the app shows a "tutor is offline" state while everything
+else keeps working.
 
 ## iOS build notes
 
@@ -217,8 +217,7 @@ explains — start at [`Design/NV.swift`](apps/mobile/Novi/Design/NV.swift),
 
 ## What is not built
 
-No streaming responses, no real ingestion pipeline, and no
-client-side test target — the backend has tests, the app has none. Projects
-exist in the API and the schema but have no screen yet. Dark mode is not
-implemented; the app is light-only and says so rather than shipping a second
-palette nobody has checked.
+No streaming responses, and no client-side test target — the backend has tests,
+the app has none. Projects exist in the API and the schema but have no screen
+yet. Dark mode is not implemented; the app is light-only and says so rather
+than shipping a second palette nobody has checked.

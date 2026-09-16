@@ -49,6 +49,9 @@ struct ProfileView: View {
                         if let stage = profile.stage {
                             NVTag(text: stageLabel(stage), tint: NV.spark)
                         }
+                        if let grade = profile.grade, !grade.isEmpty {
+                            NVTag(text: Onb.gradeLabel(grade), tint: NV.inkTertiary)
+                        }
                         if let curriculum = profile.curriculum {
                             NVTag(text: curriculum, tint: NV.inkTertiary)
                         }
@@ -107,15 +110,23 @@ struct ProfileView: View {
                 action: ("Edit", { editingInterests = true })
             )
             if let profile = session.profile, !profile.subjectOrder.isEmpty {
+                if !profile.weakSubjects.isEmpty {
+                    Text("Stuck on")
+                        .font(NV.caption)
+                        .foregroundStyle(NV.inkTertiary)
+                    FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                        ForEach(profile.weakSubjects, id: \.self) { slug in
+                            let name = session.subjects.first { $0.slug == slug }?.name ?? slug
+                            NVTag(text: name, tint: NV.spark)
+                        }
+                    }
+                }
                 FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                     ForEach(profile.subjectOrder, id: \.self) { slug in
                         let name = session.subjects.first { $0.slug == slug }?.name ?? slug
                         let weight = profile.subjectInterests[slug] ?? 0
                         HStack(spacing: 5) {
                             Text(name).font(NV.small.weight(.medium))
-                            // The live interest weight. Showing the number the
-                            // ranker actually uses is the difference between a
-                            // setting and a black box.
                             Text("\(Int(weight * 100))")
                                 .font(.system(size: 10, weight: .bold))
                                 .foregroundStyle(NV.spark)
@@ -172,30 +183,83 @@ struct ProfileView: View {
     }
 }
 
-/// Re-picking subjects. Existing weights survive: a subject the learner has
-/// actually engaged with should not be reset to its questionnaire default just
-/// because they opened this sheet.
+/// Re-picking the personalisation the feed is built from.
+///
+/// Existing interest weights survive: a subject the learner has actually
+/// engaged with should not be reset to its questionnaire default just because
+/// they opened this sheet.
 private struct InterestEditor: View {
     @EnvironmentObject private var session: AppSession
     @Environment(\.dismiss) private var dismiss
+    @State private var stage: String = "high"
+    @State private var grade: String = "11"
+    @State private var curriculum: String?
     @State private var selected: [String] = []
+    @State private var weak: [String] = []
     @State private var busy = false
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: NV.Space.m) {
-                    Text("Tap order sets priority. The first subject leads your feed.")
-                        .font(NV.small).foregroundStyle(NV.inkTertiary)
-                    FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                        ForEach(session.subjects) { subject in
-                            let rank = selected.firstIndex(of: subject.slug)
-                            NVChip(
-                                text: rank == nil ? subject.name : "\(rank! + 1). \(subject.name)",
-                                selected: rank != nil
-                            ) {
-                                if let rank { selected.remove(at: rank) }
-                                else { selected.append(subject.slug) }
+                VStack(alignment: .leading, spacing: NV.Space.xl) {
+                    VStack(alignment: .leading, spacing: NV.Space.s) {
+                        Text("SCHOOL")
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(Onb.stages) { option in
+                                NVChip(text: option.label, selected: stage == option.slug) {
+                                    stage = option.slug
+                                    if !Onb.grades(for: option.slug).contains(where: { $0.slug == grade }) {
+                                        grade = Onb.grades(for: option.slug).first?.slug ?? grade
+                                    }
+                                }
+                            }
+                        }
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(Onb.grades(for: stage)) { option in
+                                NVChip(text: option.label, selected: grade == option.slug) {
+                                    grade = option.slug
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: NV.Space.s) {
+                        Text("SUBJECTS · TAP ORDER IS PRIORITY")
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(session.subjects) { subject in
+                                let rank = selected.firstIndex(of: subject.slug)
+                                NVChip(
+                                    text: rank == nil ? subject.name : "\(rank! + 1). \(subject.name)",
+                                    selected: rank != nil
+                                ) {
+                                    if let rank {
+                                        selected.remove(at: rank)
+                                        weak.removeAll { $0 == subject.slug }
+                                    } else {
+                                        selected.append(subject.slug)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: NV.Space.s) {
+                        Text("WHERE YOU ARE STUCK")
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(session.subjects.filter { selected.contains($0.slug) }) { subject in
+                                NVChip(
+                                    text: subject.name,
+                                    selected: weak.contains(subject.slug)
+                                ) {
+                                    if let idx = weak.firstIndex(of: subject.slug) {
+                                        weak.remove(at: idx)
+                                    } else {
+                                        weak.append(subject.slug)
+                                    }
+                                }
                             }
                         }
                     }
@@ -203,24 +267,39 @@ private struct InterestEditor: View {
                 .padding(NV.Space.l)
             }
             .background(NV.page)
-            .navigationTitle("My interests")
+            .navigationTitle("My learning profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { save() }
-                        .disabled(selected.isEmpty || busy)
+                        .disabled(selected.isEmpty || weak.isEmpty || busy)
                         .fontWeight(.semibold)
                 }
             }
-            .task { selected = session.profile?.subjectOrder ?? [] }
+            .task {
+                let profile = session.profile
+                stage = profile?.stage ?? "high"
+                grade = profile?.grade ?? Onb.grades(for: stage).first?.slug ?? "11"
+                curriculum = profile?.curriculum
+                selected = profile?.subjectOrder ?? []
+                weak = profile?.weakSubjects ?? []
+            }
         }
     }
 
     private func save() {
         busy = true
         Task {
-            try? await session.updateProfile(ProfilePatchBody(subjectSlugs: selected))
+            try? await session.updateProfile(
+                ProfilePatchBody(
+                    stage: stage,
+                    grade: grade,
+                    curriculum: curriculum,
+                    subjectSlugs: selected,
+                    weakSubjectSlugs: weak
+                )
+            )
             busy = false
             dismiss()
         }

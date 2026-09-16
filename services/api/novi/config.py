@@ -82,16 +82,37 @@ class Settings(BaseSettings):
     # race on purpose: whichever side times out first decides what the learner
     # reads, and the server's structured AI_UNAVAILABLE says more than the
     # client's generic transport error.
-    ai_timeout_seconds: float = 90.0
+    ai_timeout_seconds: float = 140.0
     ai_max_output_tokens: int = 2048
 
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
+
+    youtube_api_key: str | None = None
+    x_bearer_token: str | None = None
+    # Directory of JSON/JSONL dumps from https://github.com/NanmiCoder/MediaCrawler.
+    # Live Bilibili search runs without this; cookie-gated platforms (XHS, Douyin)
+    # land here after a MediaCrawler run.
+    mediacrawler_data_dir: str = ""
 
     @field_validator("ai_model_fallbacks", mode="before")
     @classmethod
     def _split_fallbacks(cls, v: object) -> object:
         if isinstance(v, str):
             return [m.strip() for m in v.split(",") if m.strip()]
+        return v
+
+    @field_validator("ai_timeout_seconds", mode="before")
+    @classmethod
+    def _empty_timeout(cls, v: object) -> object:
+        if v == "" or v is None:
+            return 140.0
+        return v
+
+    @field_validator("ai_api_key", "youtube_api_key", "x_bearer_token", mode="before")
+    @classmethod
+    def _empty_secret(cls, v: object) -> object:
+        if isinstance(v, str) and not v.strip():
+            return None
         return v
 
     @field_validator("cors_origins", mode="before")

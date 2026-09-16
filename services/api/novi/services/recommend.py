@@ -32,11 +32,12 @@ from novi.models import (
 )
 
 WEIGHTS = {
-    "interest": 0.30,
-    "gap": 0.25,
-    "quality": 0.15,
-    "recent": 0.15,
-    "format": 0.10,
+    "interest": 0.24,
+    "gap": 0.22,
+    "struggle": 0.14,
+    "quality": 0.13,
+    "recent": 0.13,
+    "format": 0.09,
     "fresh": 0.05,
 }
 
@@ -95,6 +96,30 @@ def _recency_score(seconds_since: float | None) -> float:
 
 
 STAGE_LEVEL = {"middle": 1, "high": 2, "college": 3, "other": 2}
+GRADE_LEVEL = {
+    "6": 1,
+    "7": 1,
+    "8": 1,
+    "9": 2,
+    "10": 2,
+    "11": 2,
+    "12": 3,
+    "freshman": 3,
+    "sophomore": 3,
+    "junior": 4,
+    "senior": 4,
+    "grad": 5,
+    "adult": 3,
+    "self-taught": 2,
+}
+
+
+def _learner_level(profile: Profile | None) -> int:
+    if profile is None:
+        return 2
+    if profile.grade and profile.grade in GRADE_LEVEL:
+        return GRADE_LEVEL[profile.grade]
+    return STAGE_LEVEL.get(profile.stage or "other", 2)
 
 
 async def rank_feed(
@@ -112,7 +137,8 @@ async def rank_feed(
     ).scalar_one_or_none()
     interests: dict[str, float] = dict(profile.subject_interests) if profile else {}
     preferences = set(profile.learning_preferences) if profile else set()
-    stage_level = STAGE_LEVEL.get((profile.stage if profile else None) or "other", 2)
+    weak = set(profile.weak_subjects) if profile else set()
+    stage_level = _learner_level(profile)
 
     preferred_formats: set[str] = set()
     for pref in preferences:
@@ -197,16 +223,19 @@ async def rank_feed(
         interest = interests.get(slug, 0.1)
         known = [progress[cid] for cid, _ in links if cid in progress]
         gap = _gap_score(known, difficulty, stage_level)
-        quality = content.quality
+        # Real ingested tutorials outrank generated stand-ins when both exist.
+        quality = min(1.0, content.quality + (0.0 if content.is_sample else 0.08))
         recent = _recency_score(recent_by_subject.get(content.subject_id))
         fmt = 1.0 if (not preferred_formats or content.media_kind in preferred_formats) else 0.35
         fresh = _recency_score(
             (now - content.published_at).total_seconds() if content.published_at else None
         )
+        struggle = 1.0 if slug in weak else 0.12
 
         components = {
             "interest": interest,
             "gap": gap,
+            "struggle": struggle,
             "quality": quality,
             "recent": recent,
             "format": fmt,
@@ -237,6 +266,7 @@ def _reason(components: dict[str, float], subject_slug: str) -> str:
     return {
         "interest": f"You follow {pretty}",
         "gap": "A step beyond what you have covered",
+        "struggle": f"You said {pretty} is the hard one",
         "quality": "One of the best explanations we have on this",
         "recent": f"You have been working on {pretty}",
         "format": "Matches the formats you prefer",

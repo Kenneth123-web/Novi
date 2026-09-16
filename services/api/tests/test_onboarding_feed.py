@@ -22,8 +22,10 @@ async def test_onboarding_sets_profile_and_orders_interests(
         headers=auth["headers"],
         json={
             "stage": "high",
+            "grade": "11",
             "curriculum": "AP",
             "subject_slugs": ["mathematics", "computer-science", "physics"],
+            "weak_subject_slugs": ["mathematics"],
             "learning_preferences": ["short_video"],
             "goals": ["exam_prep"],
         },
@@ -36,6 +38,8 @@ async def test_onboarding_sets_profile_and_orders_interests(
     assert profile["subject_order"] == ["mathematics", "computer-science", "physics"]
     weights = profile["subject_interests"]
     assert weights["mathematics"] > weights["computer-science"] > weights["physics"]
+    assert profile["grade"] == "11"
+    assert profile["weak_subjects"] == ["mathematics"]
 
 
 async def test_onboarding_rejects_unknown_values(
@@ -44,7 +48,8 @@ async def test_onboarding_rejects_unknown_values(
     bad_subject = await client.post(
         "/onboarding",
         headers=auth["headers"],
-        json={"stage": "high", "subject_slugs": ["astrology"]},
+        json={"stage": "high", "grade": "11", "subject_slugs": ["astrology"],
+              "weak_subject_slugs": ["astrology"]},
     )
     assert bad_subject.status_code == 422
     assert "astrology" in bad_subject.json()["error"]["details"]["unknown"]
@@ -52,10 +57,46 @@ async def test_onboarding_rejects_unknown_values(
     bad_stage = await client.post(
         "/onboarding",
         headers=auth["headers"],
-        json={"stage": "postgrad", "subject_slugs": ["mathematics"]},
+        json={"stage": "postgrad", "grade": "11", "subject_slugs": ["mathematics"],
+              "weak_subject_slugs": ["mathematics"]},
     )
     assert bad_stage.status_code == 422
     assert bad_stage.json()["error"]["details"]["field"] == "stage"
+
+
+async def test_onboarding_needs_grade_and_weak_subjects(
+    client: AsyncClient, auth: dict, seeded: None
+) -> None:
+    missing_grade = await client.post(
+        "/onboarding",
+        headers=auth["headers"],
+        json={
+            "stage": "high",
+            "subject_slugs": ["mathematics"],
+            "weak_subject_slugs": ["mathematics"],
+        },
+    )
+    assert missing_grade.status_code == 422
+
+    missing_weak = await client.post(
+        "/onboarding",
+        headers=auth["headers"],
+        json={"stage": "high", "grade": "11", "subject_slugs": ["mathematics"]},
+    )
+    assert missing_weak.status_code == 422
+
+    weak_not_studied = await client.post(
+        "/onboarding",
+        headers=auth["headers"],
+        json={
+            "stage": "high",
+            "grade": "11",
+            "subject_slugs": ["mathematics"],
+            "weak_subject_slugs": ["physics"],
+        },
+    )
+    assert weak_not_studied.status_code == 422
+    assert weak_not_studied.json()["error"]["details"]["field"] == "weak_subject_slugs"
 
 
 async def test_onboarding_needs_at_least_one_subject(
@@ -79,6 +120,38 @@ async def test_feed_is_personalised_to_chosen_subjects(
     assert all(i["reason"] for i in items), "every card must explain itself"
 
 
+async def test_weak_subject_pulls_that_subject_forward(
+    client: AsyncClient, auth: dict, seeded: None
+) -> None:
+    r = await client.post(
+        "/onboarding",
+        headers=auth["headers"],
+        json={
+            "stage": "high",
+            "grade": "11",
+            "subject_slugs": ["mathematics", "history"],
+            "weak_subject_slugs": ["mathematics"],
+            "learning_preferences": [],
+            "goals": [],
+        },
+    )
+    assert r.status_code == 200, r.text
+    feed = await client.get("/feed", headers=auth["headers"], params={"limit": 12})
+    items = feed.json()["items"]
+    assert items
+    math_slugs = {
+        "limits", "derivatives", "chain-rule", "integrals", "functions",
+        "linear-equations", "quadratic-equations",
+    }
+    math_count = sum(
+        1
+        for i in items
+        if any(c["slug"] in math_slugs for c in i["content"]["concepts"])
+    )
+    assert math_count >= 3, "stuck-on-math should surface math tutorials"
+    assert any("hard one" in i["reason"] or "follow" in i["reason"].lower() for i in items)
+
+
 async def test_two_profiles_get_different_feeds(
     client: AsyncClient, seeded: None, registration: dict
 ) -> None:
@@ -95,7 +168,8 @@ async def test_two_profiles_get_different_feeds(
         await client.post(
             "/onboarding",
             headers=headers,
-            json={"stage": "high", "subject_slugs": subjects},
+            json={"stage": "high", "grade": "11", "subject_slugs": subjects,
+                  "weak_subject_slugs": subjects[:1]},
         )
         feed = await client.get("/feed", headers=headers, params={"limit": 20})
         return [i["content"]["id"] for i in feed.json()["items"]]

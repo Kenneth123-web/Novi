@@ -43,18 +43,19 @@ struct ContentCard: View {
     }
 
     private var cover: some View {
-        CoverArt(seed: content.coverSeed)
+        RemoteCover(url: content.thumbnailUrl, seed: content.coverSeed)
             .aspectRatio(content.thumbnailRatio, contentMode: .fill)
             .frame(maxWidth: .infinity)
             .clipped()
             .overlay(alignment: .topLeading) {
-                // The one place the app admits what this content is. A
-                // placeholder that looks ingested makes the product look
-                // finished when the hardest part has not been built.
-                if content.isSample {
-                    NVTag(text: "Sample", tint: NV.ink.opacity(0.55), filled: true)
-                        .padding(6)
+                HStack(spacing: 4) {
+                    NVTag(text: content.platform.capitalized, tint: .white.opacity(0.9), filled: false)
+                        .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 6))
+                    if content.isSample {
+                        NVTag(text: "Sample", tint: NV.ink.opacity(0.55), filled: true)
+                    }
                 }
+                .padding(6)
             }
             .overlay(alignment: .bottomTrailing) {
                 if content.mediaKind == "video", let seconds = content.durationSeconds {

@@ -109,19 +109,20 @@ final class AppSession: ObservableObject {
             .post, "auth/login", body: LoginBody(email: email, password: password)
         )
         await api.store(response.tokens)
-        apply(user: response.user)
-        try? await loadMe()
+        await enter(response.user)
     }
 
     /// `POST /auth/dev-skip` — a real session for the reserved developer
     /// account, not a fake phase override. Production APIs 404 this route.
+    ///
+    /// Skip is a login, not a completed profile. If grade / weak subjects
+    /// are missing, this still lands on the questionnaire.
     func skipAsDeveloper() async throws {
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/dev-skip", body: DevSkipBody()
         )
         await api.store(response.tokens)
-        apply(user: response.user)
-        try? await loadMe()
+        await enter(response.user)
     }
 
     func signOut() async {
@@ -188,7 +189,28 @@ final class AppSession: ObservableObject {
         }
     }
 
+    private func enter(_ user: UserDTO) async {
+        do {
+            try await loadMe()
+        } catch {
+            apply(user: user)
+        }
+    }
+
+    /// A signed-in user without grade + stuck-subjects is not ready. The
+    /// feed would rank against an empty profile and look personalised
+    /// when it is not.
+    private func profileIsPersonalised(_ profile: ProfileDTO?) -> Bool {
+        guard let profile else { return false }
+        let grade = (profile.grade ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return !grade.isEmpty && !profile.weakSubjects.isEmpty && !profile.subjectOrder.isEmpty
+    }
+
     private func apply(user: UserDTO) {
-        phase = user.isOnboarded ? .ready(user) : .onboarding(user)
+        if user.isOnboarded && profileIsPersonalised(profile) {
+            phase = .ready(user)
+        } else {
+            phase = .onboarding(user)
+        }
     }
 }

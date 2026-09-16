@@ -9,6 +9,7 @@
 #   ./scripts/dev.sh migrate   alembic upgrade head
 #   ./scripts/dev.sh seed      (re)seed subjects, concepts and content
 #   ./scripts/dev.sh console   run the Cloudflare console Worker on :8788
+#   ./scripts/dev.sh ingest    fetch real tutorials (YouTube, Reddit, X, MediaCrawler)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -74,7 +75,9 @@ cmd_console() {
   ( cd "$ROOT/services/console" && npm install && npx wrangler d1 migrations apply novi-console --local && npx wrangler dev --port 8788 )
 }
 
+cmd_ingest()  { $PY -m novi.services.ingest; }
+
 case "${1:-}" in
-  setup|migrate|seed|api|test|check|ios|console) c="$1"; shift; "cmd_$c" "$@" ;;
-  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ; exit 1 ;;
+  setup|migrate|seed|api|test|check|ios|console|ingest) c="$1"; shift; "cmd_$c" "$@" ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ; exit 1 ;;
 esac

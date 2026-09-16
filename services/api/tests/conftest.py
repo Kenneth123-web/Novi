@@ -127,6 +127,7 @@ async def onboarded(client: AsyncClient, auth: dict, seeded: None) -> dict:
             "grade": "11",
             "curriculum": "AP",
             "subject_slugs": ["mathematics", "computer-science"],
+            "weak_subject_slugs": ["mathematics"],
             "learning_preferences": ["short_video", "visual"],
             "goals": ["exam_prep"],
         },

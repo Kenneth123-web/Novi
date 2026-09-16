@@ -22,6 +22,41 @@ enum Onb {
         .init(slug: "other", label: "Something else", icon: "sparkles"),
     ]
 
+    /// Must match `GRADES_BY_STAGE` on the API. A label the server would
+    /// reject cannot appear as a chip.
+    static func grades(for stage: String) -> [Option] {
+        switch stage {
+        case "middle":
+            ["6", "7", "8"].map { .init(slug: $0, label: "Grade \($0)") }
+        case "high":
+            ["9", "10", "11", "12"].map { .init(slug: $0, label: "Grade \($0)") }
+        case "college":
+            [
+                .init(slug: "freshman", label: "Freshman"),
+                .init(slug: "sophomore", label: "Sophomore"),
+                .init(slug: "junior", label: "Junior"),
+                .init(slug: "senior", label: "Senior"),
+                .init(slug: "grad", label: "Graduate"),
+            ]
+        case "other":
+            [
+                .init(slug: "adult", label: "Adult learner"),
+                .init(slug: "self-taught", label: "Self-taught"),
+            ]
+        default:
+            []
+        }
+    }
+
+    static func gradeLabel(_ slug: String) -> String {
+        for stage in stages {
+            if let match = grades(for: stage.slug).first(where: { $0.slug == slug }) {
+                return match.label
+            }
+        }
+        return slug
+    }
+
     static let curricula: [Option] = [
         .init(slug: "AP", label: "AP"),
         .init(slug: "IB", label: "IB"),

@@ -24,6 +24,7 @@ import httpx
 from novi.config import get_settings
 from novi.core.errors import AIUnavailable
 from novi.core.logging import get_logger
+from novi.core.tls import context
 
 logger = get_logger(__name__)
 
@@ -215,7 +216,11 @@ class AIGateway:
                 "No AI provider is configured", details={"reason": "missing_api_key"}
             )
 
-        client = self._client or httpx.AsyncClient(timeout=s.ai_timeout_seconds)
+        client = self._client or httpx.AsyncClient(
+            timeout=httpx.Timeout(s.ai_timeout_seconds, connect=10.0),
+            trust_env=False,
+            verify=context(),
+        )
         owns_client = self._client is None
         try:
             response = await client.post(
@@ -391,24 +396,36 @@ class AIGateway:
         return result
 
     async def health(self) -> dict[str, Any]:
-        """A single cheap call, used by /health/ready and the admin view."""
+        """A cheap reachability probe, used by /health/ready and the admin view.
+
+        Hits GET /models rather than burning a generation: a load balancer that
+        polls this must not spend the tutor budget, and a 90s complete_json
+        made the ready check look like an outage when the gateway was merely slow.
+        """
         s = get_settings()
         if not s.ai_configured:
             return {"status": "unconfigured", "model": s.ai_model}
+        url = f"{s.ai_base_url.rstrip('/')}/models"
         try:
-            await self.complete_json(
-                system='Reply with JSON only.',
-                user='Return {"ok": true}',
-                model=s.ai_model_fast,
-                max_tokens=32,
-                temperature=0,
-            )
-        except AIUnavailable as exc:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(8.0, connect=5.0),
+                trust_env=False,
+                verify=context(),
+            ) as client:
+                response = await client.get(url, headers=self._headers())
+        except httpx.HTTPError as exc:
             return {
                 "status": "unavailable",
                 "model": s.ai_model,
-                "reason": exc.details.get("reason"),
-                "detail": exc.details.get("upstream"),
+                "reason": "transport",
+                "detail": type(exc).__name__,
+            }
+        if response.status_code >= 400:
+            return {
+                "status": "unavailable",
+                "model": s.ai_model,
+                "reason": "http_error",
+                "detail": f"HTTP {response.status_code}",
             }
         return {"status": "ok", "model": s.ai_model}
 

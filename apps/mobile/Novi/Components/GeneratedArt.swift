@@ -163,3 +163,25 @@ struct Avatar: View {
             }
     }
 }
+
+/// Prefer the ingested thumbnail; fall back to the drawn cover so a missing
+/// or slow image does not leave a grey hole in the masonry.
+struct RemoteCover: View {
+    let url: String?
+    let seed: String
+
+    var body: some View {
+        if let url, let parsed = URL(string: url), !url.isEmpty {
+            AsyncImage(url: parsed) { phase in
+                switch phase {
+                case .success(let image):
+                    image.resizable().scaledToFill()
+                default:
+                    CoverArt(seed: seed)
+                }
+            }
+        } else {
+            CoverArt(seed: seed)
+        }
+    }
+}

@@ -92,8 +92,10 @@ async def ask(
     user_prompt = explain_prompt.build_user_prompt(
         question=question,
         stage=profile.stage if profile else None,
+        grade=profile.grade if profile else None,
         curriculum=profile.curriculum if profile else None,
         subjects=subjects,
+        weak_subjects=list(profile.weak_subjects) if profile else None,
         mode=mode,
         known_concepts=known,
         content_title=content.title if content else None,

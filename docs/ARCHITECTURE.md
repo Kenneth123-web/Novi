@@ -65,7 +65,12 @@ ai/          gateway + versioned prompts
 
 A router never builds a query and a service never touches `Request`. That earns
 its keep the first time logic has to run somewhere that is not an HTTP request
-— the seeder calls services directly, and an ingestion worker will too.
+— the seeder calls services directly, and so does
+`python -m novi.services.ingest`. That command fetches real tutorials from
+YouTube, Reddit, X, and MediaCrawler platforms (live Bilibili search, plus
+JSON dumps from the [MediaCrawler](https://github.com/NanmiCoder/MediaCrawler)
+repo for cookie-gated apps), matches titles to catalog concepts, and retires
+`is_sample` rows once enough real items exist.
 
 ## Decisions
 

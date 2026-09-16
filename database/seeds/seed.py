@@ -92,48 +92,57 @@ async def seed() -> dict[str, int]:
             edge_count += 1
         await db.flush()
 
-        # ── Content ──────────────────────────────────────────────────────────
-        existing_content = {
-            (c.platform, c.external_id): c
-            for c in (await db.execute(select(Content))).scalars()
-        }
-        linked = {
-            (link.content_id, link.concept_id)
-            for link in (await db.execute(select(ContentConcept))).scalars()
-        }
+        real_content = (
+            await db.execute(
+                select(Content).where(Content.is_sample.is_(False)).limit(1)
+            )
+        ).scalar_one_or_none()
+        skip_sample_content = real_content is not None
         content_count = 0
-        for slug, concept in concepts.items():
-            subject_slug = concept_subject.get(slug)
-            if subject_slug is None:
-                continue
-            for sample in build_for_concept(slug, concept.name, concept.difficulty):
-                key = (sample.platform, sample.external_id)
-                row = existing_content.get(key)
-                if row is None:
-                    row = Content(platform=sample.platform, external_id=sample.external_id)
-                    db.add(row)
-                    existing_content[key] = row
-                    content_count += 1
-                row.title = sample.title
-                row.description = sample.description
-                row.creator = sample.creator
-                row.media_kind = sample.media_kind
-                row.language = sample.language
-                row.subject_id = subjects[subject_slug].id
-                row.topic = sample.topic
-                row.tags = sample.tags
-                row.likes = sample.likes
-                row.comments = sample.comments
-                row.quality = sample.quality
-                row.difficulty = sample.difficulty
-                row.thumbnail_ratio = sample.thumbnail_ratio
-                row.duration_seconds = sample.duration_seconds
-                # Never unset. These rows are stand-ins and the client says so.
-                row.is_sample = True
-                await db.flush()
-                if (row.id, concept.id) not in linked:
-                    db.add(ContentConcept(content_id=row.id, concept_id=concept.id, relevance=1.0))
-                    linked.add((row.id, concept.id))
+        if not skip_sample_content:
+            existing_content = {
+                (c.platform, c.external_id): c
+                for c in (await db.execute(select(Content))).scalars()
+            }
+            linked = {
+                (link.content_id, link.concept_id)
+                for link in (await db.execute(select(ContentConcept))).scalars()
+            }
+            for slug, concept in concepts.items():
+                subject_slug = concept_subject.get(slug)
+                if subject_slug is None:
+                    continue
+                for sample in build_for_concept(slug, concept.name, concept.difficulty):
+                    key = (sample.platform, sample.external_id)
+                    row = existing_content.get(key)
+                    if row is None:
+                        row = Content(platform=sample.platform, external_id=sample.external_id)
+                        db.add(row)
+                        existing_content[key] = row
+                        content_count += 1
+                    row.title = sample.title
+                    row.description = sample.description
+                    row.creator = sample.creator
+                    row.media_kind = sample.media_kind
+                    row.language = sample.language
+                    row.subject_id = subjects[subject_slug].id
+                    row.topic = sample.topic
+                    row.tags = sample.tags
+                    row.likes = sample.likes
+                    row.comments = sample.comments
+                    row.quality = sample.quality
+                    row.difficulty = sample.difficulty
+                    row.thumbnail_ratio = sample.thumbnail_ratio
+                    row.duration_seconds = sample.duration_seconds
+                    row.is_sample = True
+                    await db.flush()
+                    if (row.id, concept.id) not in linked:
+                        db.add(
+                            ContentConcept(
+                                content_id=row.id, concept_id=concept.id, relevance=1.0
+                            )
+                        )
+                        linked.add((row.id, concept.id))
 
         # ── Discussions ──────────────────────────────────────────────────────
         existing_disc = {
@@ -145,41 +154,49 @@ async def seed() -> dict[str, int]:
         with_comments = set(
             (await db.execute(select(DiscussionComment.discussion_id).distinct())).scalars()
         )
+        real_disc = (
+            await db.execute(
+                select(Discussion).where(Discussion.is_sample.is_(False)).limit(1)
+            )
+        ).scalar_one_or_none()
         disc_count = 0
-        for slug in DISCUSSION_CONCEPTS:
-            concept = concepts.get(slug)
-            if concept is None:
-                continue
-            for sample in build_discussions(slug, concept.name, concept_subject.get(slug, "")):
-                row = existing_disc.get(sample.external_id)
-                if row is None:
-                    row = Discussion(external_id=sample.external_id)
-                    db.add(row)
-                    existing_disc[sample.external_id] = row
-                    disc_count += 1
-                row.platform = "reddit"
-                row.community = sample.community
-                row.title = sample.title
-                row.body = sample.body
-                row.author = sample.author
-                row.language = "en"
-                row.upvotes = sample.upvotes
-                row.comment_count = len(sample.comments)
-                row.concept_id = concept.id
-                row.is_sample = True
-                await db.flush()
-                if row.id not in with_comments:
-                    with_comments.add(row.id)
-                    for i, body in enumerate(sample.comments):
-                        db.add(
-                            DiscussionComment(
-                                discussion_id=row.id,
-                                author=f"{sample.author[:6]}_{i}",
-                                body=body,
-                                upvotes=max(1, sample.upvotes // (i + 3)),
-                                ordinal=i,
+        if real_disc is None:
+            for slug in DISCUSSION_CONCEPTS:
+                concept = concepts.get(slug)
+                if concept is None:
+                    continue
+                for sample in build_discussions(
+                    slug, concept.name, concept_subject.get(slug, "")
+                ):
+                    row = existing_disc.get(sample.external_id)
+                    if row is None:
+                        row = Discussion(external_id=sample.external_id)
+                        db.add(row)
+                        existing_disc[sample.external_id] = row
+                        disc_count += 1
+                    row.platform = "reddit"
+                    row.community = sample.community
+                    row.title = sample.title
+                    row.body = sample.body
+                    row.author = sample.author
+                    row.language = "en"
+                    row.upvotes = sample.upvotes
+                    row.comment_count = len(sample.comments)
+                    row.concept_id = concept.id
+                    row.is_sample = True
+                    await db.flush()
+                    if row.id not in with_comments:
+                        with_comments.add(row.id)
+                        for i, body in enumerate(sample.comments):
+                            db.add(
+                                DiscussionComment(
+                                    discussion_id=row.id,
+                                    author=f"{sample.author[:6]}_{i}",
+                                    body=body,
+                                    upvotes=max(1, sample.upvotes // (i + 3)),
+                                    ordinal=i,
+                                )
                             )
-                        )
 
         await db.commit()
         return {

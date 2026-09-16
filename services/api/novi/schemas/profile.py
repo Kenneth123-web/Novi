@@ -20,6 +20,19 @@ GOALS = [
     "improve_grades", "exam_prep", "learn_new", "build_projects",
     "explore_careers", "go_deeper", "college_prep", "curiosity",
 ]
+# Grade / year, keyed by stage. The slug is what ranking and the tutor read.
+GRADES_BY_STAGE: dict[str, list[str]] = {
+    "middle": ["6", "7", "8"],
+    "high": ["9", "10", "11", "12"],
+    "college": ["freshman", "sophomore", "junior", "senior", "grad"],
+    "other": ["adult", "self-taught"],
+}
+
+
+def allowed_grades(stage: str | None) -> list[str]:
+    if stage and stage in GRADES_BY_STAGE:
+        return GRADES_BY_STAGE[stage]
+    return [g for grades in GRADES_BY_STAGE.values() for g in grades]
 
 
 class ProfileOut(ORMModel):
@@ -28,6 +41,7 @@ class ProfileOut(ORMModel):
     curriculum: str | None = None
     subject_order: list[str] = Field(default_factory=list)
     subject_interests: dict[str, float] = Field(default_factory=dict)
+    weak_subjects: list[str] = Field(default_factory=list)
     learning_preferences: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
     language: str = "en"
@@ -42,10 +56,12 @@ class OnboardingRequest(BaseModel):
     """
 
     stage: str
-    grade: str | None = Field(default=None, max_length=32)
+    grade: str = Field(min_length=1, max_length=32)
     curriculum: str | None = None
     # Order is priority and it is preserved — the first subject leads the feed.
     subject_slugs: list[str] = Field(min_length=1, max_length=20)
+    # Subset of subject_slugs: the classes they said they are stuck on.
+    weak_subject_slugs: list[str] = Field(min_length=1, max_length=20)
     learning_preferences: list[str] = Field(default_factory=list, max_length=12)
     goals: list[str] = Field(default_factory=list, max_length=10)
     language: str = "en"
@@ -58,6 +74,7 @@ class ProfileUpdate(BaseModel):
     grade: str | None = Field(default=None, max_length=32)
     curriculum: str | None = None
     subject_slugs: list[str] | None = None
+    weak_subject_slugs: list[str] | None = None
     learning_preferences: list[str] | None = None
     goals: list[str] | None = None
     language: str | None = Field(default=None, max_length=16)

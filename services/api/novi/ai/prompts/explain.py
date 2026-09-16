@@ -7,7 +7,7 @@ without a version stamped on the row that question is unanswerable.
 
 from __future__ import annotations
 
-VERSION = "explain-v2"
+VERSION = "explain-v3"
 
 SYSTEM = """\
 You are a tutor for a student using a social learning app. You explain one \
@@ -64,8 +64,10 @@ def build_user_prompt(
     *,
     question: str,
     stage: str | None = None,
+    grade: str | None = None,
     curriculum: str | None = None,
     subjects: list[str] | None = None,
+    weak_subjects: list[str] | None = None,
     mode: str = "explain",
     known_concepts: list[str] | None = None,
     content_title: str | None = None,
@@ -83,10 +85,17 @@ def build_user_prompt(
     context: list[str] = []
     if stage:
         context.append(f"They are {_LEVELS.get(stage, _LEVELS['other'])}.")
+    if grade:
+        context.append(f"Grade / year: {grade}.")
     if curriculum:
         context.append(f"Curriculum: {curriculum}.")
     if subjects:
         context.append(f"They study: {', '.join(subjects[:5])}.")
+    if weak_subjects:
+        context.append(
+            "They are stuck on: " + ", ".join(weak_subjects[:5]) + ". "
+            "Spend extra care on intuition and the mistakes students actually make there."
+        )
     if known_concepts:
         # This is what stops the tutor re-explaining ground already covered.
         context.append(

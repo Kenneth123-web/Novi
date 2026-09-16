@@ -19,6 +19,7 @@ import httpx
 
 from novi.config import get_settings
 from novi.core.logging import get_logger
+from novi.core.tls import context
 from novi.models import User
 
 logger = get_logger(__name__)
@@ -43,7 +44,9 @@ async def _post(path: str, payload: dict[str, Any]) -> None:
     base, secret = cfg
     try:
         async with asyncio.timeout(_HARD_CAP):
-            async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
+            async with httpx.AsyncClient(
+                timeout=_TIMEOUT, trust_env=False, verify=context()
+            ) as client:
                 response = await client.post(
                     f"{base}{path}",
                     json=payload,
@@ -70,7 +73,9 @@ async def _get_json(path: str) -> dict[str, Any] | None:
     base, secret = cfg
     try:
         async with asyncio.timeout(_HARD_CAP):
-            async with httpx.AsyncClient(timeout=_TIMEOUT, trust_env=False) as client:
+            async with httpx.AsyncClient(
+                timeout=_TIMEOUT, trust_env=False, verify=context()
+            ) as client:
                 response = await client.get(
                     f"{base}{path}",
                     headers={"x-novi-origin-secret": secret},

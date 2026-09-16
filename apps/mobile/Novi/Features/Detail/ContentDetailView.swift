@@ -11,6 +11,7 @@ struct ContentDetailView: View {
     var onAsk: (AskSeed) -> Void
 
     @EnvironmentObject private var session: AppSession
+    @Environment(\.openURL) private var openURL
     @State private var detail: ContentDetailDTO?
     @State private var error: APIError?
     @State private var saved = false
@@ -70,7 +71,7 @@ struct ContentDetailView: View {
     }
 
     private func cover(_ content: ContentDTO) -> some View {
-        CoverArt(seed: content.coverSeed)
+        RemoteCover(url: content.thumbnailUrl, seed: content.coverSeed)
             .frame(height: 240)
             .frame(maxWidth: .infinity)
             .clipped()
@@ -113,6 +114,17 @@ struct ContentDetailView: View {
 
     private func askButton(_ detail: ContentDetailDTO) -> some View {
         VStack(spacing: NV.Space.s) {
+            if let raw = detail.content.url,
+               let url = URL(string: raw),
+               !detail.content.isSample {
+                NVButton(
+                    title: "Open on \(detail.content.platform.capitalized)",
+                    icon: "arrow.up.right",
+                    kind: .secondary
+                ) {
+                    openURL(url)
+                }
+            }
             NVButton(title: "I have a question", icon: "sparkles") {
                 onAsk(
                     AskSeed(
