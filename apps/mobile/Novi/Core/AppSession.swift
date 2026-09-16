@@ -52,6 +52,12 @@ final class AppSession: ObservableObject {
 
         if Demo.resetSession { await api.signOutLocally() }
 
+        if Demo.skipLogin {
+            try? await skipAsDeveloper()
+            if case .launching = phase { phase = .signedOut }
+            return
+        }
+
         if let credentials = Demo.credentials {
             // A development shortcut. Failures are silent on purpose: a demo
             // account that no longer exists should land on the normal sign-in
@@ -93,6 +99,17 @@ final class AppSession: ObservableObject {
     func signIn(email: String, password: String) async throws {
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/login", body: LoginBody(email: email, password: password)
+        )
+        await api.store(response.tokens)
+        apply(user: response.user)
+        try? await loadMe()
+    }
+
+    /// `POST /auth/dev-skip` — a real session for the reserved developer
+    /// account, not a fake phase override. Production APIs 404 this route.
+    func skipAsDeveloper() async throws {
+        let response: AuthResponseDTO = try await api.send(
+            .post, "auth/dev-skip", body: DevSkipBody()
         )
         await api.store(response.tokens)
         apply(user: response.user)

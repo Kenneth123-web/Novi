@@ -49,6 +49,13 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class DevSkipRequest(BaseModel):
+    """Body for POST /auth/dev-skip. `secret` is required only when the
+    server has DEV_SKIP_SECRET configured."""
+
+    secret: str = ""
+
+
 class TokenPair(BaseModel):
     access_token: str
     refresh_token: str

@@ -8,10 +8,11 @@
                   ▼
           services/api (FastAPI)
                   │
-   ┌──────────────┼──────────────┐
-   ▼              ▼              ▼
-PostgreSQL   AI gateway      ranking
-             (Gemini)
+   ┌──────────────┼──────────────┬──────────────┐
+   ▼              ▼              ▼              ▼
+PostgreSQL   AI gateway      ranking     novi-console
+             (via edge)                  (D1: accounts,
+                                          logins, usage)
 ```
 
 One client, on purpose. Every surface in the plan — feed, explore, ask,
@@ -38,6 +39,12 @@ The Worker serves `POST /v1/messages` and returns the provider's own error
 shape. That is not a coincidence: it is exactly what the gateway already
 builds and already parses, so the boundary moved without a line of backend
 code changing. Two environment variables switch it on.
+
+**novi-console** is the other Cloudflare Worker. Register, login and
+developer skip-login upsert the account into D1; the request middleware
+records API usage; the gateway records AI token spend. The admin site on
+that Worker can disable a login. The origin consults D1 on the next sign-in
+and **fails open** if the Worker is down.
 
 The gateway is protocol-agnostic for the same reason. `AI_PROTOCOL=anthropic`
 sends `POST /v1/messages` with `x-api-key`; `openai` sends

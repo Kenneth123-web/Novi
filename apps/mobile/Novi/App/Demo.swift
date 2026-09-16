@@ -32,6 +32,11 @@ enum Demo {
         return (email, password)
     }
 
+    /// `-demoSkipLogin YES` — `POST /auth/dev-skip` against the real API and
+    /// land in the product as the reserved developer account. A screenshot of
+    /// a state the server cannot produce is not evidence of anything.
+    static var skipLogin: Bool { d.bool(forKey: "demoSkipLogin") }
+
     /// `-demoQuestion "why does a derivative represent slope"` — open Ask with
     /// the question already asked.
     static var question: String? { d.string(forKey: "demoQuestion") }

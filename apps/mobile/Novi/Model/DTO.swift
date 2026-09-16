@@ -358,6 +358,10 @@ struct LoginBody: Encodable {
     let password: String
 }
 
+struct DevSkipBody: Encodable {
+    var secret: String = ""
+}
+
 struct RefreshBody: Encodable {
     let refreshToken: String
 }

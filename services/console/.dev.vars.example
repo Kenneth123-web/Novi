@@ -1,0 +1,11 @@
+# Local development secrets. Copy to `.dev.vars` — which is gitignored.
+#
+# In production these are set with `wrangler secret put <NAME>`.
+
+# Password for the admin site at this Worker's URL.
+ADMIN_PASSWORD=replace-me
+
+# What the Novi API sends as `X-Novi-Origin-Secret`. Same value as
+# CONSOLE_ORIGIN_SECRET in the API's `.env`.
+#   openssl rand -base64 48
+CONSOLE_ORIGIN_SECRET=replace-me

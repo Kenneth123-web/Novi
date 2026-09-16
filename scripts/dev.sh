@@ -8,6 +8,7 @@
 #   ./scripts/dev.sh ios       regenerate the Xcode project and build
 #   ./scripts/dev.sh migrate   alembic upgrade head
 #   ./scripts/dev.sh seed      (re)seed subjects, concepts and content
+#   ./scripts/dev.sh console   run the Cloudflare console Worker on :8788
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -69,7 +70,11 @@ cmd_ios() {
     -derivedDataPath /tmp/novi-dd build
 }
 
+cmd_console() {
+  ( cd "$ROOT/services/console" && npm install && npx wrangler d1 migrations apply novi-console --local && npx wrangler dev --port 8788 )
+}
+
 case "${1:-}" in
-  setup|migrate|seed|api|test|check|ios) c="$1"; shift; "cmd_$c" "$@" ;;
-  *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ; exit 1 ;;
+  setup|migrate|seed|api|test|check|ios|console) c="$1"; shift; "cmd_$c" "$@" ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ; exit 1 ;;
 esac

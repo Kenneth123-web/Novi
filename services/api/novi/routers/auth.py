@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Body, Depends, Request, status
 
 from novi.core.deps import DB, CurrentUser
 from novi.core.ratelimit import rate_limit
 from novi.schemas.auth import (
     AuthResponse,
+    DevSkipRequest,
     LoginRequest,
     RefreshRequest,
     RegisterRequest,
@@ -39,6 +40,24 @@ async def register(body: RegisterRequest, request: Request, db: DB) -> AuthRespo
 async def login(body: LoginRequest, request: Request, db: DB) -> AuthResponse:
     user, tokens = await auth_service.login(
         db, email=body.email, password=body.password, user_agent=_ua(request)
+    )
+    return AuthResponse(user=UserOut.model_validate(user), tokens=tokens)
+
+
+@router.post("/dev-skip", response_model=AuthResponse)
+async def dev_skip(
+    request: Request,
+    db: DB,
+    body: DevSkipRequest = Body(default_factory=DevSkipRequest),
+) -> AuthResponse:
+    """Issue a real session for the reserved developer account.
+
+    Exists so a local build can reach the product without a password. In
+    production the route 404s unless DEV_SKIP_SECRET is set, and then the
+    body must carry that secret.
+    """
+    user, tokens = await auth_service.skip_login(
+        db, secret=body.secret, user_agent=_ua(request)
     )
     return AuthResponse(user=UserOut.model_validate(user), tokens=tokens)
 

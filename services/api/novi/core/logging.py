@@ -66,6 +66,20 @@ def get_logger(name: str) -> logging.Logger:
 
 _access = get_logger("novi.access")
 
+_USAGE_SKIP = (
+    "/health",
+    "/v1/health",
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+)
+
+
+def _skip_usage(path: str) -> bool:
+    if path.startswith("/v1/internal/") or path.startswith("/internal/"):
+        return True
+    return path in _USAGE_SKIP or path.startswith("/docs")
+
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -89,5 +103,17 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                     "latency_ms": round((time.perf_counter() - started) * 1000, 2),
                 },
             )
+            path = request.url.path
+            if request.method != "OPTIONS" and not _skip_usage(path):
+                from novi.services.console_client import report_usage
+
+                report_usage(
+                    user_id=user_id_var.get(),
+                    method=request.method,
+                    path=path,
+                    status=status_code,
+                    latency_ms=round((time.perf_counter() - started) * 1000, 2),
+                    request_id=rid,
+                )
             request_id_var.reset(rid_token)
             user_id_var.reset(uid_token)

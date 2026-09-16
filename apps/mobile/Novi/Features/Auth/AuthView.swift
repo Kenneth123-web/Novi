@@ -51,6 +51,14 @@ struct AuthView: View {
                     )
                     .padding(.top, NV.Space.xl)
 
+                    NVButton(
+                        title: "Skip as developer",
+                        kind: .quiet,
+                        loading: busy,
+                        action: skipDeveloper
+                    )
+                    .padding(.top, NV.Space.s)
+
                     toggleRow.padding(.top, NV.Space.l)
                     Spacer(minLength: NV.Space.section)
                 }
@@ -156,6 +164,23 @@ struct AuthView: View {
                         displayName: displayName.isEmpty ? username : displayName
                     )
                 }
+            } catch let apiError as APIError {
+                error = apiError
+            } catch {
+                self.error = APIError.transport(error)
+            }
+            busy = false
+        }
+    }
+
+    private func skipDeveloper() {
+        guard !busy else { return }
+        busy = true
+        error = nil
+        focused = nil
+        Task {
+            do {
+                try await session.skipAsDeveloper()
             } catch let apiError as APIError {
                 error = apiError
             } catch {

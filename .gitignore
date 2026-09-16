@@ -39,3 +39,8 @@ design/canvas/novi-ui-system.html
 services/edge/.dev.vars
 services/edge/node_modules/
 services/edge/.wrangler/
+
+services/console/.dev.vars
+services/console/node_modules/
+services/console/.wrangler/
+services/console/secrets.local.json

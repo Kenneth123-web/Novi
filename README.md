@@ -18,6 +18,7 @@ feed → open something → "I have a question" → explanation
 apps/mobile/       SwiftUI client (iOS 17+)
 services/api/      FastAPI — the only thing that talks to the database
 services/edge/     Cloudflare Worker — custodian of the AI provider key
+services/console/  Cloudflare Worker — accounts, API usage, admin site
 database/          Migrations and seed data
 docs/              Architecture, database, API
 scripts/dev.sh     Every command below, in one place
@@ -80,6 +81,12 @@ iOS app ──▶ Novi API ──▶ novi-edge ──▶ provider
 It serves the same path and speaks the same error dialect the API already
 expects, so switching is two environment variables and no code. See
 [`services/edge/README.md`](services/edge/README.md).
+
+**Accounts and API usage live on Cloudflare too.** `services/console` is a
+Worker with a D1 database and an admin site. Register, login and developer
+skip-login all write the account there; every API/AI call is recorded against
+it. Open the Worker URL to disable a user or read what they spent. See
+[`services/console/README.md`](services/console/README.md).
 
 The simulator shares the host's loopback, so the app finds the API at
 `127.0.0.1:8000` with no configuration. A device build needs the host's LAN
@@ -185,6 +192,7 @@ actually looked at.
 ```bash
 xcrun simctl launch <UDID> luke.novi.app \
   -demoResetSession YES                        # forget stored tokens → sign-in
+  -demoSkipLogin YES                           # POST /auth/dev-skip, for real
   -demoEmail a@example.com -demoPassword ...   # sign in on launch, for real
   -demoSkipIntro YES                           # straight past the opening
   -demoHoldIntro YES                           # stop on the opening's last frame
@@ -209,8 +217,8 @@ explains — start at [`Design/NV.swift`](apps/mobile/Novi/Design/NV.swift),
 
 ## What is not built
 
-No streaming responses, no real ingestion pipeline, no admin dashboard, and no
-client-side test target — the backend has 39 tests, the app has none. Projects
+No streaming responses, no real ingestion pipeline, and no
+client-side test target — the backend has tests, the app has none. Projects
 exist in the API and the schema but have no screen yet. Dark mode is not
 implemented; the app is light-only and says so rather than shipping a second
 palette nobody has checked.

@@ -1,0 +1,20 @@
+{
+  "name": "novi-console",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker that stores Novi accounts and API usage, and serves the admin site",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.8.19",
+    "typescript": "^5.7.2",
+    "vitest": "~3.0.7",
+    "wrangler": "^4.0.0"
+  }
+}
