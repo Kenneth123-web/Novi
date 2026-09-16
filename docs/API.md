@@ -51,13 +51,18 @@ authenticated limit by IP would make one school's NAT share a single AI budget.
 ## Endpoints
 
 ### Auth
-`POST /auth/register` · `POST /auth/login` · `POST /auth/refresh` ·
-`POST /auth/logout` · `GET /auth/session`
+`POST /auth/register` · `POST /auth/login` · `POST /auth/dev-skip` ·
+`POST /auth/refresh` · `POST /auth/logout` · `GET /auth/session`
 
 Passwords are 8–128 characters and may not be all letters or all digits. Login
 runs the Argon2 verify even for an unknown email, against a dummy hash —
 skipping it makes "no such account" measurably faster than "wrong password",
 which is a working account-enumeration oracle.
+
+`POST /auth/dev-skip` issues a real session for the reserved developer account
+(`developer@novi.app`). In development and test it is open. In production the
+route 404s unless `DEV_SKIP_SECRET` is set, and then the body must carry that
+secret. It is not a fake phase: the tokens are the same shape login returns.
 
 ### Profile
 `GET /me` · `PATCH /me` · `POST /onboarding` ·

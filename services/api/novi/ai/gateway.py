@@ -369,7 +369,7 @@ class AIGateway:
             logger.warning("ai_missing_keys", extra={"model": chosen, "missing": warnings})
 
         input_tokens, output_tokens = self._usage(body)
-        return AIResult(
+        result = AIResult(
             data=data,
             model=chosen,
             input_tokens=input_tokens,
@@ -378,6 +378,17 @@ class AIGateway:
             raw_text=text,
             warnings=warnings,
         )
+        from novi.core.logging import user_id_var
+        from novi.services.console_client import report_ai_usage
+
+        report_ai_usage(
+            user_id=user_id_var.get(),
+            model=chosen,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
+        )
+        return result
 
     async def health(self) -> dict[str, Any]:
         """A single cheap call, used by /health/ready and the admin view."""

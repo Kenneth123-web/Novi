@@ -1,0 +1,43 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "novi-console",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-09-15",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // Do not pin account_id. This Worker deploys to whichever Cloudflare
+  // account `wrangler login` on this machine is using — not another
+  // project's account.
+
+  // Secrets (wrangler secret put / .dev.vars), never in this file:
+  //   ADMIN_PASSWORD         the admin site's password
+  //   CONSOLE_ORIGIN_SECRET  what the Novi API sends to ingest
+  "vars": {
+    // Origin API the console calls when an admin disables a user.
+    // Empty: D1 is still the ledger; login consults it. Postgres is
+    // updated only when this is set to a reachable Novi API.
+    "API_BASE_URL": ""
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "novi-console",
+      // Replaced on first `wrangler d1 create` / deploy. Local tests
+      // ignore the remote id and use a file-backed D1 from migrations.
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  "assets": {
+    "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*", "/health"]
+  },
+
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

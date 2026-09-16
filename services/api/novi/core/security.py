@@ -8,6 +8,7 @@ the session row, so logout is a delete that actually revokes.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -67,3 +68,15 @@ def fingerprint(token: str) -> str:
     of uniform randomness, so there is nothing to brute-force, and refresh runs
     on app launch where a 100ms KDF would be felt."""
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def secret_matches(presented: str, expected: str) -> bool:
+    """Constant-time compare of two secrets.
+
+    Both sides are hashed first so a length mismatch cannot throw (hmac's
+    compare_digest requires equal-length bytes) and cannot leak through the
+    exception path.
+    """
+    left = hashlib.sha256(presented.encode()).digest()
+    right = hashlib.sha256(expected.encode()).digest()
+    return hmac.compare_digest(left, right)

@@ -36,6 +36,18 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 60 * 60 * 24 * 7
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 60
 
+    # Developer skip-login. Empty means the route exists in development/test
+    # and is absent in production. A non-empty value must be presented as
+    # `secret` on POST /auth/dev-skip, in every environment.
+    dev_skip_secret: str = ""
+
+    # ── Console (Cloudflare Worker that stores accounts + API usage) ─────────
+    # Empty CONSOLE_BASE_URL disables ingest: local tests and a fresh clone
+    # must not depend on Cloudflare being up. The origin secret is what the
+    # Worker checks before accepting a write.
+    console_base_url: str = ""
+    console_origin_secret: str = ""
+
     # ── AI gateway (OpenAI-compatible, in front of Gemini) ───────────────────
     ai_base_url: str = "https://1pkapi.com/v1"
     ai_api_key: str | None = None

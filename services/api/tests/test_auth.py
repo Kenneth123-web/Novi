@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from httpx import AsyncClient
 
 
@@ -94,3 +95,61 @@ async def test_garbage_token_rejected(client: AsyncClient) -> None:
     r = await client.get("/me", headers={"Authorization": "Bearer nope"})
     assert r.status_code == 401
     assert r.json()["error"]["code"] == "TOKEN_INVALID"
+
+
+async def test_dev_skip_issues_a_real_session(client: AsyncClient) -> None:
+    r = await client.post("/auth/dev-skip", json={})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["user"]["email"] == "developer@novi.app"
+    assert body["tokens"]["refresh_token"]
+    me = await client.get(
+        "/me", headers={"Authorization": f"Bearer {body['tokens']['access_token']}"}
+    )
+    assert me.status_code == 200
+    assert me.json()["user"]["email"] == "developer@novi.app"
+
+
+async def test_dev_skip_is_idempotent(client: AsyncClient) -> None:
+    first = await client.post("/auth/dev-skip", json={})
+    second = await client.post("/auth/dev-skip", json={})
+    assert first.status_code == second.status_code == 200
+    assert first.json()["user"]["id"] == second.json()["user"]["id"]
+
+
+async def test_dev_skip_hidden_in_production(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from novi.config import Settings
+    from novi.services import auth_service
+
+    monkeypatch.setattr(
+        auth_service,
+        "get_settings",
+        lambda: Settings(
+            env="production",
+            jwt_secret="test-secret-value-that-is-long-enough-00000",
+        ),
+    )
+    r = await client.post("/auth/dev-skip", json={})
+    assert r.status_code == 404
+
+
+async def test_dev_skip_requires_secret_when_configured(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from novi.config import Settings
+    from novi.services import auth_service
+
+    monkeypatch.setattr(
+        auth_service,
+        "get_settings",
+        lambda: Settings(
+            env="test",
+            jwt_secret="test-secret-value-that-is-long-enough-00000",
+            dev_skip_secret="skip-secret-value",
+        ),
+    )
+    assert (await client.post("/auth/dev-skip", json={})).status_code == 401
+    r = await client.post("/auth/dev-skip", json={"secret": "skip-secret-value"})
+    assert r.status_code == 200, r.text

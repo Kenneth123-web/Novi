@@ -13,7 +13,7 @@ from novi.config import get_settings
 from novi.core.errors import install_error_handlers
 from novi.core.logging import RequestContextMiddleware, configure_logging, get_logger
 from novi.db import dispose_engine
-from novi.routers import ask, auth, catalog, feed, health, me, passport
+from novi.routers import ask, auth, catalog, feed, health, internal, me, passport
 from novi.schemas.common import ErrorEnvelope
 
 logger = get_logger(__name__)
@@ -92,6 +92,7 @@ def create_app() -> FastAPI:
         feed.router,
         ask.router,
         passport.router,
+        internal.router,
     ):
         app.include_router(router, prefix="/v1")
     # Also unversioned: a load balancer's health check is configured once and
