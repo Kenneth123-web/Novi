@@ -1,10 +1,11 @@
 import SwiftUI
 
-/// Six screens, one question each.
+/// Seven screens, one question each.
 ///
-/// Grade and the subjects they are stuck on are not optional colour: they are
-/// what the ranker and the tutor actually read. Skip-login still lands here
-/// until those answers exist — a developer account with no profile is not a
+/// Grade, the classes they take, which parts of those subjects, and the
+/// subjects they are stuck on are not optional colour: they are what the
+/// ranker and the tutor actually read. Skip-login still lands here until
+/// those answers exist — a developer account with no profile is not a
 /// personalised feed.
 ///
 /// Nothing is sent until the last step. The API takes the whole questionnaire
@@ -23,6 +24,7 @@ struct OnboardingView: View {
     @State private var courseNames: [String: String] = [:]
     @State private var focusSubjects: [String] = []
     @State private var focusGoals: [String: String] = [:]
+    @State private var focusAreas: [String: [String]] = [:]
     @State private var preferences: Set<String> = []
     @State private var goals: Set<String> = []
 
@@ -30,7 +32,7 @@ struct OnboardingView: View {
     @State private var loadingCourses = false
     @State private var error: APIError?
 
-    private let totalSteps = 6
+    private let totalSteps = 7
 
     var body: some View {
         ZStack {
@@ -45,8 +47,9 @@ struct OnboardingView: View {
                 schoolStep.tag(1)
                 subjectStep.tag(2)
                 weakStep.tag(3)
-                preferenceStep.tag(4)
-                goalStep.tag(5)
+                areaStep.tag(4)
+                preferenceStep.tag(5)
+                goalStep.tag(6)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.easeInOut(duration: 0.25), value: step)
@@ -118,6 +121,11 @@ struct OnboardingView: View {
         case 3:
             !focusSubjects.isEmpty
                 && focusSubjects.allSatisfy { focusGoals[$0] != nil }
+        case 4:
+            areaSubjects.allSatisfy { course in
+                Onb.areas(for: course.subjectSlug).isEmpty
+                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
+            }
         default: true
         }
     }
@@ -133,7 +141,7 @@ struct OnboardingView: View {
             Text("a few things about you.")
                 .font(NV.h2)
                 .foregroundStyle(NV.inkSecondary)
-            Text("Grade, what you study, and where you are stuck. That is what the feed and the tutor are built from — not a generic “for you”.")
+            Text("Grade, what you study, which parts of those subjects, and where you are stuck. That is what the feed and the tutor are built from — not a generic “for you”.")
                 .font(NV.body)
                 .foregroundStyle(NV.inkTertiary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -280,6 +288,7 @@ struct OnboardingView: View {
                 if let index = currentCourses.firstIndex(of: course.slug) {
                     currentCourses.remove(at: index)
                     courseNames[course.slug] = nil
+                    pruneAreas()
                 } else {
                     currentCourses.append(course.slug)
                 }
@@ -364,6 +373,7 @@ struct OnboardingView: View {
                 if let index = focusSubjects.firstIndex(of: course.subjectSlug) {
                     focusSubjects.remove(at: index)
                     focusGoals[course.subjectSlug] = nil
+                    pruneAreas()
                 } else {
                     focusSubjects.append(course.subjectSlug)
                 }
@@ -423,6 +433,7 @@ struct OnboardingView: View {
                     .background(NV.surface)
                     .clipShape(RoundedRectangle(cornerRadius: NV.Radius.control, style: .continuous))
                 }
+                .accessibilityIdentifier("onboarding.focusGoal.\(course.subjectSlug)")
             }
         }
         .padding(NV.Space.m)
@@ -434,6 +445,48 @@ struct OnboardingView: View {
             RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous)
                 .strokeBorder(selected ? NV.spark.opacity(0.3) : NV.hairline, lineWidth: 1)
         }
+    }
+
+    private var areaStep: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: NV.Space.l) {
+                stepHeading(
+                    "Which parts of these subjects?",
+                    "Biology is not one thing, and neither is math. Pick the chapters Novi should actually feed you."
+                )
+
+                ForEach(areaSubjects, id: \.subjectSlug) { course in
+                    VStack(alignment: .leading, spacing: NV.Space.s) {
+                        HStack(spacing: NV.Space.s) {
+                            Image(systemName: course.icon)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(NV.spark)
+                            Text(course.subjectName.uppercased())
+                                .font(NV.caption)
+                                .foregroundStyle(NV.inkTertiary)
+                        }
+                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                            ForEach(Onb.areas(for: course.subjectSlug)) { option in
+                                let selected = (focusAreas[course.subjectSlug] ?? [])
+                                    .contains(option.slug)
+                                NVChip(
+                                    text: option.label,
+                                    selected: selected
+                                ) {
+                                    toggleArea(subject: course.subjectSlug, area: option.slug)
+                                }
+                                .accessibilityIdentifier(
+                                    "onboarding.area.\(course.subjectSlug).\(option.slug)"
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, NV.pageMargin)
+            .padding(.bottom, NV.Space.xl)
+        }
+        .scrollIndicators(.hidden)
     }
 
     private var preferenceStep: some View {
@@ -515,6 +568,51 @@ struct OnboardingView: View {
         courseNames = [:]
         focusSubjects = []
         focusGoals = [:]
+        focusAreas = [:]
+    }
+
+    private var areaSubjects: [CurriculumCourseDTO] {
+        guard let gradeMap else { return [] }
+        var seen = Set<String>()
+        var out: [CurriculumCourseDTO] = []
+        for slug in currentCourses {
+            guard let course = gradeMap.courses.first(where: { $0.slug == slug }) else { continue }
+            if seen.insert(course.subjectSlug).inserted {
+                out.append(course)
+            }
+        }
+        for subject in focusSubjects where seen.insert(subject).inserted {
+            if let course = gradeMap.courses.first(where: { $0.subjectSlug == subject }) {
+                out.append(course)
+            }
+        }
+        return out.filter { !Onb.areas(for: $0.subjectSlug).isEmpty }
+    }
+
+    private func toggleArea(subject: String, area: String) {
+        var current = focusAreas[subject] ?? []
+        if let index = current.firstIndex(of: area) {
+            current.remove(at: index)
+        } else {
+            current.append(area)
+        }
+        if current.isEmpty {
+            focusAreas[subject] = nil
+        } else {
+            focusAreas[subject] = current
+        }
+    }
+
+    private func pruneAreas() {
+        let keep = Set(areaSubjects.map(\.subjectSlug))
+        focusAreas = focusAreas.filter { keep.contains($0.key) }
+    }
+
+    private var submittedFocusAreas: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: areaSubjects.compactMap { course in
+            let picked = focusAreas[course.subjectSlug] ?? []
+            return picked.isEmpty ? nil : (course.subjectSlug, picked)
+        })
     }
 
     private func loadCurriculum() async {
@@ -547,7 +645,11 @@ struct OnboardingView: View {
             let grade,
             !currentCourses.isEmpty,
             !focusSubjects.isEmpty,
-            focusSubjects.allSatisfy({ focusGoals[$0] != nil })
+            focusSubjects.allSatisfy({ focusGoals[$0] != nil }),
+            areaSubjects.allSatisfy({ course in
+                Onb.areas(for: course.subjectSlug).isEmpty
+                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
+            })
         else { return }
         busy = true
         error = nil
@@ -567,6 +669,7 @@ struct OnboardingView: View {
                         },
                         focusSubjectSlugs: focusSubjects,
                         focusGoals: focusGoals,
+                        focusAreas: submittedFocusAreas,
                         learningPreferences: preferences.sorted(),
                         goals: goals.sorted(),
                         language: "en"

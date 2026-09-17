@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from novi.areas import areas_by_subject_payload
 from novi.core.deps import DB, CurrentUser
 from novi.curriculum import FOCUS_GOALS, GRADES_BY_STAGE, STAGES
 from novi.schemas.auth import UserOut
@@ -55,6 +56,7 @@ async def onboarding_options() -> dict:
             {"slug": slug, "label": label, "description": description}
             for slug, (label, description) in FOCUS_GOALS.items()
         ],
+        "areas_by_subject": areas_by_subject_payload(),
     }
 
 

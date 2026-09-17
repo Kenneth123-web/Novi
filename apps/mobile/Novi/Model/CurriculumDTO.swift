@@ -91,6 +91,13 @@ enum PassportCourseSection: String, CaseIterable {
     }
 }
 
+struct PassportAreaDTO: Decodable, Identifiable, Equatable, Hashable {
+    let slug: String
+    let name: String
+
+    var id: String { slug }
+}
+
 struct PassportCourseDTO: Decodable, Identifiable, Equatable, Hashable {
     let slug: String
     let subjectSlug: String
@@ -106,6 +113,7 @@ struct PassportCourseDTO: Decodable, Identifiable, Equatable, Hashable {
     let isCurrent: Bool
     let isFocus: Bool
     let focusGoal: String?
+    let focusAreas: [PassportAreaDTO]
     let recommendationReason: String
     let status: String
     let progress: Double
@@ -148,6 +156,7 @@ struct LearningOnboardingBody: Encodable {
     let currentCourses: [CurrentCourseSelectionDTO]
     let focusSubjectSlugs: [String]
     let focusGoals: [String: String]
+    let focusAreas: [String: [String]]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -160,4 +169,5 @@ struct LearningProfilePatchBody: Encodable {
     let currentCourses: [CurrentCourseSelectionDTO]
     let focusSubjectSlugs: [String]
     let focusGoals: [String: String]
+    let focusAreas: [String: [String]]
 }

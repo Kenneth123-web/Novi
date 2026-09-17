@@ -442,6 +442,14 @@ struct PassportView: View {
                         }
                     }
 
+                    if !course.focusAreas.isEmpty {
+                        FlowRow(spacing: 6, lineSpacing: 6) {
+                            ForEach(course.focusAreas) { area in
+                                NVTag(text: area.name, icon: "scope", tint: NV.spark)
+                            }
+                        }
+                    }
+
                     HStack(spacing: NV.Space.s) {
                         Image(systemName: course.statusIcon)
                             .font(.system(size: 12, weight: .semibold))

@@ -8,6 +8,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novi.areas import area_name
 from novi.curriculum import (
     FRAMEWORK_NOTE,
     courses_for_grade,
@@ -88,18 +89,24 @@ def _course_reason(
     grade_label: str,
     focus_goal: str | None,
     is_current: bool,
+    area_names: list[str],
 ) -> str:
     if lane == "focus":
         goal = focus_goal_label(focus_goal)
         if goal:
             prefix = "Current course; " if is_current else ""
-            return f"{prefix}{goal} in {subject_name}, based on your learning focus."
-        return f"{subject_name} is one of the subjects you chose to strengthen."
-    if lane == "current":
-        return "Included because you said you are taking this course now."
-    if lane == "required":
-        return f"A core course in Novi's complete {grade_label} learning map."
-    return f"Recommended to broaden the {grade_label} learning map."
+            reason = f"{prefix}{goal} in {subject_name}, based on your learning focus."
+        else:
+            reason = f"{subject_name} is one of the subjects you chose to strengthen."
+    elif lane == "current":
+        reason = "Included because you said you are taking this course now."
+    elif lane == "required":
+        reason = f"A core course in Novi's complete {grade_label} learning map."
+    else:
+        reason = f"Recommended to broaden the {grade_label} learning map."
+    if area_names:
+        reason = f"{reason} Focusing on {', '.join(area_names)}."
+    return reason
 
 
 def _curriculum_map(
@@ -131,6 +138,12 @@ def _curriculum_map(
         slug: goal
         for slug, goal in (profile.focus_goals or {}).items()
         if slug in focus
+    }
+    stored_areas = profile.focus_areas or {}
+    focus_areas = {
+        slug: [area for area in stored_areas.get(slug, []) if isinstance(area, str) and area]
+        for slug in {course.subject_slug for course in courses_for_grade(spec.stage, spec.slug)}
+        if stored_areas.get(slug)
     }
     subject_by_slug = {subject.slug: subject for subject in subjects.values()}
     concepts_by_subject: dict[uuid.UUID, list[Concept]] = {}
@@ -181,6 +194,16 @@ def _curriculum_map(
             else course.requirement
         )
         focus_goal = focus_goals.get(course.subject_slug)
+        area_slugs = (
+            focus_areas.get(course.subject_slug, [])
+            if is_current or is_focus
+            else []
+        )
+        area_payload = [
+            {"slug": slug, "name": area_name(course.subject_slug, slug)}
+            for slug in area_slugs
+        ]
+        area_names = [item["name"] for item in area_payload]
         course_map.append(
             {
                 "slug": course.slug,
@@ -197,12 +220,14 @@ def _curriculum_map(
                 "is_current": is_current,
                 "is_focus": is_focus,
                 "focus_goal": focus_goal_label(focus_goal),
+                "focus_areas": area_payload,
                 "recommendation_reason": _course_reason(
                     lane=lane,
                     subject_name=subject.name,
                     grade_label=spec.label,
                     focus_goal=focus_goal,
                     is_current=is_current,
+                    area_names=area_names if (is_current or is_focus) else [],
                 ),
                 "status": _course_status(rows),
                 "progress": round(progress_value, 3),

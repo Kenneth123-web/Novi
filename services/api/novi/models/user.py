@@ -83,6 +83,12 @@ class Profile(Base, TimestampMixin):
     focus_goals: Mapped[dict[str, str]] = mapped_column(
         JSONB, nullable=False, default=dict, server_default="{}"
     )
+    # Per subject, the within-subject areas the learner actually wants.
+    # Biology is not one feed: genetics and ecology are different. Empty
+    # means the whole subject, which is the legacy default.
+    focus_areas: Mapped[dict[str, list[str]]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     goals: Mapped[list[str]] = mapped_column(ARRAY(String(48)), nullable=False, default=list)
 
     language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")

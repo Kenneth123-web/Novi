@@ -5,11 +5,17 @@ import uuid
 from fastapi import APIRouter, Query
 from sqlalchemy import select
 
+from novi.areas import all_subjects_payload, subject_areas, subject_as_dict
 from novi.core.deps import DB
 from novi.core.errors import NotFound, ValidationFailed
 from novi.curriculum import FRAMEWORK_NOTE, GRADE_SPECS, STAGES, courses_for_grade, grade_spec
 from novi.models import Concept, Subject
-from novi.schemas.curriculum import CurriculumCourseOut, GradeCurriculumOut, GradeSpecOut
+from novi.schemas.curriculum import (
+    CurriculumCourseOut,
+    GradeCurriculumOut,
+    GradeSpecOut,
+    SubjectAreasOut,
+)
 from novi.schemas.profile import ConceptOut, SubjectOut
 from novi.services import ask_service
 
@@ -88,6 +94,24 @@ async def grade_curriculum(stage: str, grade: str, db: DB) -> GradeCurriculumOut
             for course in courses_for_grade(stage, grade)
         ],
     )
+
+
+@router.get("/areas", response_model=list[SubjectAreasOut])
+async def list_areas() -> list[SubjectAreasOut]:
+    """Every within-subject area the product can personalise on.
+
+    Biology is not one feed. This list is what onboarding and the profile
+    editor render; ranking and the passport both key off the same slugs.
+    """
+    return [SubjectAreasOut.model_validate(item) for item in all_subjects_payload()]
+
+
+@router.get("/areas/{subject_slug}", response_model=SubjectAreasOut)
+async def subject_area_catalog(subject_slug: str) -> SubjectAreasOut:
+    item = subject_areas(subject_slug)
+    if item is None:
+        raise NotFound("Subject not found")
+    return SubjectAreasOut.model_validate(subject_as_dict(item))
 
 
 @router.get("/concepts", response_model=list[ConceptOut])

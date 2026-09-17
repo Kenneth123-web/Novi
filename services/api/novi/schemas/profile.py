@@ -31,6 +31,7 @@ class ProfileOut(ORMModel):
     weak_subjects: list[str] = Field(default_factory=list)
     current_courses: list[CurrentCourseSelection] = Field(default_factory=list)
     focus_goals: dict[str, str] = Field(default_factory=dict)
+    focus_areas: dict[str, list[str]] = Field(default_factory=dict)
     learning_preferences: list[str] = Field(default_factory=list)
     goals: list[str] = Field(default_factory=list)
     language: str = "en"
@@ -71,6 +72,29 @@ class ProfileOut(ORMModel):
             if isinstance(key, str) and isinstance(goal, str) and key and goal
         }
 
+    @field_validator("focus_areas", mode="before")
+    @classmethod
+    def _coerce_focus_areas(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return {}
+        out: dict[str, list[str]] = {}
+        for key, raw in value.items():
+            if not isinstance(key, str) or not key or not isinstance(raw, list):
+                continue
+            areas = [item for item in raw if isinstance(item, str) and item.strip()]
+            # Preserve pick order, drop duplicates.
+            seen: set[str] = set()
+            ordered: list[str] = []
+            for area in areas:
+                slug = area.strip()
+                if slug in seen:
+                    continue
+                seen.add(slug)
+                ordered.append(slug)
+            if ordered:
+                out[key] = ordered
+        return out
+
 
 class OnboardingRequest(BaseModel):
     """The whole questionnaire, submitted once at the end.
@@ -88,6 +112,7 @@ class OnboardingRequest(BaseModel):
     current_courses: list[CurrentCourseSelection] | None = Field(default=None, max_length=20)
     focus_subject_slugs: list[str] | None = Field(default=None, max_length=20)
     focus_goals: dict[str, str] = Field(default_factory=dict, max_length=20)
+    focus_areas: dict[str, list[str]] | None = Field(default=None, max_length=20)
     subject_slugs: list[str] | None = Field(default=None, max_length=20)
     weak_subject_slugs: list[str] | None = Field(default=None, max_length=20)
     learning_preferences: list[str] = Field(default_factory=list, max_length=12)
@@ -104,6 +129,7 @@ class ProfileUpdate(BaseModel):
     current_courses: list[CurrentCourseSelection] | None = Field(default=None, max_length=20)
     focus_subject_slugs: list[str] | None = Field(default=None, max_length=20)
     focus_goals: dict[str, str] | None = Field(default=None, max_length=20)
+    focus_areas: dict[str, list[str]] | None = Field(default=None, max_length=20)
     # Compatibility inputs for the previous subject-only client.
     subject_slugs: list[str] | None = None
     weak_subject_slugs: list[str] | None = None

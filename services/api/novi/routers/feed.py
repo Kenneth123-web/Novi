@@ -7,8 +7,9 @@ from sqlalchemy import delete, select
 
 from novi.core.deps import DB, CurrentUser
 from novi.core.errors import NotFound, ValidationFailed
+from novi.core.lang import language_key
 from novi.core.ratelimit import rate_limit
-from novi.models import INTERACTION_TYPES, Content, ContentLike, SavedContent
+from novi.models import INTERACTION_TYPES, Content, ContentLike, Profile, SavedContent
 from novi.schemas.common import Ok
 from novi.schemas.content import (
     ContentDetail,
@@ -68,7 +69,11 @@ async def get_content(content_id: uuid.UUID, user: CurrentUser, db: DB) -> Conte
         raise NotFound("Content not found")
 
     concepts = await ask_service.concepts_for_content(db, content.id)
-    related = await content_service.related(db, content)
+    profile = (
+        await db.execute(select(Profile).where(Profile.user_id == user.id))
+    ).scalar_one_or_none()
+    language = language_key(profile.language if profile else None) or "en"
+    related = await content_service.related(db, content, language=language)
     ids = [content.id, *[r.id for r in related]]
     refs = await content_service.concept_refs(db, ids)
     saved, liked = await content_service.user_state(db, user.id, ids)

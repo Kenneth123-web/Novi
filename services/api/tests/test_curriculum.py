@@ -111,6 +111,13 @@ async def test_onboarding_options_expose_grades_and_focus_goals(client: AsyncCli
         "exam_readiness",
         "catch_up",
     }
+    biology = body["areas_by_subject"]["biology"]
+    assert {item["slug"] for item in biology} == {
+        "cells",
+        "genetics",
+        "physiology",
+        "ecology",
+    }
 
 
 async def _onboard_courses(
@@ -195,6 +202,24 @@ async def test_onboarding_with_courses_is_the_passport_source(
 
     lanes = [course["lane"] for course in body["course_map"]]
     assert lanes == sorted(lanes, key=["focus", "current", "required", "recommended"].index)
+
+
+async def test_areas_catalog_is_restful_and_rejects_unknown(
+    client: AsyncClient,
+) -> None:
+    listing = await client.get("/areas")
+    assert listing.status_code == 200, listing.text
+    by_slug = {item["subject_slug"]: item for item in listing.json()}
+    assert "biology" in by_slug
+    assert {area["slug"] for area in by_slug["biology"]["areas"]} >= {"genetics", "cells"}
+
+    biology = await client.get("/areas/biology")
+    assert biology.status_code == 200
+    assert biology.json()["subject_name"] == "Biology"
+    assert any(area["slug"] == "genetics" for area in biology.json()["areas"])
+
+    missing = await client.get("/areas/astrology")
+    assert missing.status_code == 404
 
 
 async def test_legacy_subjects_still_onboard_and_fill_the_map(
@@ -351,9 +376,61 @@ async def test_malformed_saved_courses_do_not_break_me(
         ).scalar_one()
         profile.current_courses = [{"bad": True}, "nope", {"course_slug": ""}]
         profile.focus_goals = {"ok": 1, "": "catch_up"}  # type: ignore[assignment]
+        profile.focus_areas = {"biology": "genetics"}  # type: ignore[assignment]
         await db.commit()
 
     me = await client.get("/me", headers=auth["headers"])
     assert me.status_code == 200, me.text
     assert me.json()["profile"]["current_courses"] == []
     assert me.json()["profile"]["focus_goals"] == {}
+    assert me.json()["profile"]["focus_areas"] == {}
+
+
+async def test_onboarding_stores_focus_areas_on_the_passport(
+    client: AsyncClient, auth: dict, seeded: None
+) -> None:
+    r = await _onboard_courses(
+        client,
+        auth["headers"],
+        courses=[{"course_slug": "high-11-biology", "name": "Honors Bio"}],
+        focus=["biology"],
+        goals={"biology": "exam_readiness"},
+        extra={"focus_areas": {"biology": ["genetics", "physiology"]}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["profile"]["focus_areas"] == {
+        "biology": ["genetics", "physiology"]
+    }
+
+    passport = (await client.get("/passport", headers=auth["headers"])).json()
+    bio = next(c for c in passport["course_map"] if c["slug"] == "high-11-biology")
+    assert [area["slug"] for area in bio["focus_areas"]] == ["genetics", "physiology"]
+    assert "Genetics" in bio["recommendation_reason"]
+    math = next(c for c in passport["course_map"] if c["slug"] == "high-11-mathematics")
+    assert math["focus_areas"] == []
+
+
+async def test_unknown_or_empty_focus_areas_are_rejected(
+    client: AsyncClient, auth: dict, seeded: None
+) -> None:
+    unknown = await _onboard_courses(
+        client,
+        auth["headers"],
+        courses=[{"course_slug": "high-11-biology", "name": ""}],
+        focus=["biology"],
+        goals={"biology": "catch_up"},
+        extra={"focus_areas": {"biology": ["astrology"]}},
+    )
+    assert unknown.status_code == 422
+    assert unknown.json()["error"]["details"]["field"] == "focus_areas"
+
+    empty = await _onboard_courses(
+        client,
+        auth["headers"],
+        courses=[{"course_slug": "high-11-biology", "name": ""}],
+        focus=["biology"],
+        goals={"biology": "catch_up"},
+        extra={"focus_areas": {}},
+    )
+    assert empty.status_code == 422
+    assert empty.json()["error"]["details"]["field"] == "focus_areas"

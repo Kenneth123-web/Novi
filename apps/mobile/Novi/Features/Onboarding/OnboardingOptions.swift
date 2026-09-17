@@ -121,4 +121,127 @@ enum Onb {
         guard let slug else { return "Choose a goal" }
         return focusGoals.first { $0.slug == slug }?.label ?? "Choose a goal"
     }
+
+    /// Must match `SUBJECT_AREAS` on the API. A chip the server would reject
+    /// cannot appear here.
+    static func areas(for subject: String) -> [Option] {
+        areasBySubject[subject] ?? []
+    }
+
+    static let areasBySubject: [String: [Option]] = [
+        "mathematics": [
+            .init(slug: "algebra", label: "Algebra",
+                  detail: "Equations, functions and the language of symbols."),
+            .init(slug: "geometry", label: "Geometry & trig",
+                  detail: "Shape, space and trigonometric ratios."),
+            .init(slug: "calculus", label: "Calculus",
+                  detail: "Limits, rates of change and accumulation."),
+            .init(slug: "statistics", label: "Statistics & probability",
+                  detail: "Chance, distributions and inference."),
+            .init(slug: "linear-algebra", label: "Linear algebra",
+                  detail: "Matrices and eigenvalues."),
+        ],
+        "physics": [
+            .init(slug: "mechanics", label: "Mechanics",
+                  detail: "Motion, forces, energy and gravity."),
+            .init(slug: "waves-optics", label: "Waves & optics",
+                  detail: "Oscillations, light and images."),
+            .init(slug: "electricity", label: "Electricity & magnetism",
+                  detail: "Fields, circuits and magnetic effects."),
+            .init(slug: "thermodynamics", label: "Thermodynamics",
+                  detail: "Heat, entropy and the laws that bind them."),
+            .init(slug: "modern", label: "Modern physics",
+                  detail: "Relativity and the quantum scale."),
+        ],
+        "chemistry": [
+            .init(slug: "structure", label: "Structure & bonding",
+                  detail: "Atoms, the periodic table and how atoms stick."),
+            .init(slug: "reactions", label: "Reactions & energy",
+                  detail: "What happens, how fast, and how far."),
+            .init(slug: "organic", label: "Organic chemistry",
+                  detail: "Carbon skeletons, groups and mechanisms."),
+        ],
+        "biology": [
+            .init(slug: "cells", label: "Cells & energy",
+                  detail: "What a cell is, and how it powers itself."),
+            .init(slug: "genetics", label: "Genetics",
+                  detail: "DNA, inheritance and protein-making."),
+            .init(slug: "physiology", label: "Physiology",
+                  detail: "How organisms keep themselves running."),
+            .init(slug: "ecology", label: "Evolution & ecology",
+                  detail: "Populations, selection and ecosystems."),
+        ],
+        "computer-science": [
+            .init(slug: "programming", label: "Programming",
+                  detail: "The constructs you write code with."),
+            .init(slug: "algorithms", label: "Algorithms",
+                  detail: "Complexity, data structures and problem-solving."),
+            .init(slug: "systems", label: "Systems",
+                  detail: "How software talks to data and the network."),
+            .init(slug: "ai-ml", label: "AI & machine learning",
+                  detail: "Networks, embeddings and recommenders."),
+        ],
+        "economics": [
+            .init(slug: "micro", label: "Microeconomics",
+                  detail: "Choices, markets and strategic behaviour."),
+            .init(slug: "macro", label: "Macroeconomics",
+                  detail: "The whole economy: output, prices, policy."),
+        ],
+        "history": [
+            .init(slug: "methods", label: "Historical method",
+                  detail: "Sources, and the arguments historians have about them."),
+            .init(slug: "revolutions", label: "Revolutions",
+                  detail: "Industrial and political ruptures."),
+            .init(slug: "twentieth-century", label: "The twentieth century",
+                  detail: "World wars, the Cold War and decolonisation."),
+        ],
+        "geography": [
+            .init(slug: "physical", label: "Physical geography",
+                  detail: "Earth systems: rock, water, weather."),
+            .init(slug: "human", label: "Human geography",
+                  detail: "People, cities and a changing climate."),
+        ],
+        "psychology": [
+            .init(slug: "methods", label: "Research methods",
+                  detail: "How psychologists actually find things out."),
+            .init(slug: "cognition", label: "Cognition",
+                  detail: "Memory and the shortcuts minds take."),
+            .init(slug: "learning", label: "Learning",
+                  detail: "Conditioning and how behaviour changes."),
+            .init(slug: "development", label: "Mind & body",
+                  detail: "Attachment and the stress response."),
+        ],
+        "languages": [
+            .init(slug: "grammar", label: "Grammar",
+                  detail: "Word order, tense and conditionals."),
+            .init(slug: "usage", label: "Usage",
+                  detail: "Collocations and the right register."),
+        ],
+        "literature": [
+            .init(slug: "reading", label: "Close reading",
+                  detail: "Voice, image and what a text is doing."),
+            .init(slug: "writing", label: "Writing about texts",
+                  detail: "A thesis, then an essay that holds."),
+        ],
+        "art": [
+            .init(slug: "studio", label: "Studio practice",
+                  detail: "Composition, colour and drawing in space."),
+            .init(slug: "design", label: "Design",
+                  detail: "Type, and how to talk about visual work."),
+        ],
+        "business": [
+            .init(slug: "strategy", label: "Strategy & marketing",
+                  detail: "How a firm is built and how it finds customers."),
+            .init(slug: "finance", label: "Finance",
+                  detail: "Unit economics and the statements behind them."),
+        ],
+        "engineering": [
+            .init(slug: "mechanics", label: "Mechanics",
+                  detail: "Forces in real objects, and what they do to materials."),
+            .init(slug: "electrical", label: "Electrical systems",
+                  detail: "Circuits and the loops that control them."),
+            .init(slug: "design", label: "Design & CAD",
+                  detail: "Drawing the thing before you build it."),
+        ],
+    ]
 }

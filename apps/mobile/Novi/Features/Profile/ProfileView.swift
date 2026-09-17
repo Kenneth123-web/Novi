@@ -237,6 +237,7 @@ struct LearningProfileEditor: View {
     @State private var courseNames: [String: String] = [:]
     @State private var focusSubjects: [String] = []
     @State private var focusGoals: [String: String] = [:]
+    @State private var focusAreas: [String: [String]] = [:]
     @State private var loading = false
     @State private var busy = false
     @State private var error: APIError?
@@ -256,6 +257,7 @@ struct LearningProfileEditor: View {
                     } else if let gradeMap {
                         courseSection(gradeMap)
                         focusSection(gradeMap)
+                        areaSection(gradeMap)
                     }
 
                     if let error {
@@ -288,6 +290,10 @@ struct LearningProfileEditor: View {
         !selectedCourses.isEmpty
             && !focusSubjects.isEmpty
             && focusSubjects.allSatisfy { focusGoals[$0] != nil }
+            && editorAreaSubjects(gradeMap).allSatisfy { course in
+                Onb.areas(for: course.subjectSlug).isEmpty
+                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
+            }
             && gradeMap != nil
             && !loading
             && !busy
@@ -361,6 +367,7 @@ struct LearningProfileEditor: View {
                         if let index = focusSubjects.firstIndex(of: course.subjectSlug) {
                             focusSubjects.remove(at: index)
                             focusGoals[course.subjectSlug] = nil
+                            pruneEditorAreas()
                         } else {
                             focusSubjects.append(course.subjectSlug)
                         }
@@ -378,6 +385,33 @@ struct LearningProfileEditor: View {
         }
     }
 
+    private func areaSection(_ map: GradeCurriculumDTO) -> some View {
+        let subjects = editorAreaSubjects(map)
+        return VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(
+                title: "Inside those subjects",
+                subtitle: "Biology is not one thing"
+            )
+            Text("Pick the chapters Novi should actually feed you.")
+                .font(NV.small).foregroundStyle(NV.inkTertiary)
+            ForEach(subjects, id: \.subjectSlug) { course in
+                VStack(alignment: .leading, spacing: NV.Space.s) {
+                    Text(course.subjectName.uppercased())
+                        .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                    FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                        ForEach(Onb.areas(for: course.subjectSlug)) { option in
+                            let selected = (focusAreas[course.subjectSlug] ?? [])
+                                .contains(option.slug)
+                            NVChip(text: option.label, selected: selected) {
+                                toggleEditorArea(subject: course.subjectSlug, area: option.slug)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private func editorCourseCard(_ course: CurriculumCourseDTO) -> some View {
         let selected = selectedCourses.contains(course.slug)
         return VStack(alignment: .leading, spacing: NV.Space.s) {
@@ -385,6 +419,7 @@ struct LearningProfileEditor: View {
                 if let index = selectedCourses.firstIndex(of: course.slug) {
                     selectedCourses.remove(at: index)
                     courseNames[course.slug] = nil
+                    pruneEditorAreas()
                 } else {
                     selectedCourses.append(course.slug)
                 }
@@ -473,6 +508,50 @@ struct LearningProfileEditor: View {
         }
     }
 
+    private func editorAreaSubjects(_ map: GradeCurriculumDTO?) -> [CurriculumCourseDTO] {
+        guard let map else { return [] }
+        var seen = Set<String>()
+        var out: [CurriculumCourseDTO] = []
+        for slug in selectedCourses {
+            guard let course = map.courses.first(where: { $0.slug == slug }) else { continue }
+            if seen.insert(course.subjectSlug).inserted {
+                out.append(course)
+            }
+        }
+        for subject in focusSubjects where seen.insert(subject).inserted {
+            if let course = map.courses.first(where: { $0.subjectSlug == subject }) {
+                out.append(course)
+            }
+        }
+        return out.filter { !Onb.areas(for: $0.subjectSlug).isEmpty }
+    }
+
+    private func toggleEditorArea(subject: String, area: String) {
+        var current = focusAreas[subject] ?? []
+        if let index = current.firstIndex(of: area) {
+            current.remove(at: index)
+        } else {
+            current.append(area)
+        }
+        if current.isEmpty {
+            focusAreas[subject] = nil
+        } else {
+            focusAreas[subject] = current
+        }
+    }
+
+    private func pruneEditorAreas() {
+        let keep = Set(editorAreaSubjects(gradeMap).map(\.subjectSlug))
+        focusAreas = focusAreas.filter { keep.contains($0.key) }
+    }
+
+    private var submittedEditorAreas: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: editorAreaSubjects(gradeMap).compactMap { course in
+            let picked = focusAreas[course.subjectSlug] ?? []
+            return picked.isEmpty ? nil : (course.subjectSlug, picked)
+        })
+    }
+
     private func hydrate() {
         let profile = session.profile
         stage = profile?.stage ?? "high"
@@ -491,6 +570,7 @@ struct LearningProfileEditor: View {
             focusSubjects.append(subject)
         }
         focusGoals = profile?.focusGoals ?? [:]
+        focusAreas = profile?.focusAreas ?? [:]
     }
 
     private func resetLearningSelections() {
@@ -499,6 +579,7 @@ struct LearningProfileEditor: View {
         courseNames = [:]
         focusSubjects = []
         focusGoals = [:]
+        focusAreas = [:]
         error = nil
     }
 
@@ -520,6 +601,7 @@ struct LearningProfileEditor: View {
             courseNames = courseNames.filter { validCourses.contains($0.key) }
             focusSubjects = focusSubjects.filter(validSubjects.contains)
             focusGoals = focusGoals.filter { validSubjects.contains($0.key) }
+            focusAreas = focusAreas.filter { validSubjects.contains($0.key) }
             error = nil
         } catch let apiError as APIError {
             gradeMap = nil
@@ -549,7 +631,8 @@ struct LearningProfileEditor: View {
                             )
                         },
                         focusSubjectSlugs: focusSubjects,
-                        focusGoals: focusGoals
+                        focusGoals: focusGoals,
+                        focusAreas: submittedEditorAreas
                     )
                 )
                 busy = false

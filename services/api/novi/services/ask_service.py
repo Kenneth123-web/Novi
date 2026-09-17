@@ -16,7 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from novi.ai.gateway import gateway
 from novi.ai.prompts import explain as explain_prompt
+from novi.areas import area_name, concepts_for_areas
 from novi.core.errors import NotFound
+from novi.core.lang import content_matches_language, language_clause, language_key
 from novi.core.logging import get_logger
 from novi.curriculum import course_for_slug, focus_goal_label
 from novi.models import (
@@ -74,13 +76,67 @@ def _focus_context(profile: Profile | None) -> list[str]:
     return context
 
 
-async def _catalog_names(db: AsyncSession, subject_slugs: list[str], limit: int = 40) -> list[str]:
+def _area_context(profile: Profile | None) -> list[str]:
+    if profile is None:
+        return []
+    context: list[str] = []
+    for subject, areas in (profile.focus_areas or {}).items():
+        if not areas:
+            continue
+        labels = [area_name(subject, slug) for slug in areas]
+        name = subject.replace("-", " ").title()
+        context.append(f"{name}: {', '.join(labels)}")
+    return context
+
+
+def _area_concept_slugs(profile: Profile | None) -> list[str]:
+    if profile is None:
+        return []
+    slugs: list[str] = []
+    seen: set[str] = set()
+    for subject, areas in (profile.focus_areas or {}).items():
+        for slug in concepts_for_areas(subject, areas or []):
+            if slug not in seen:
+                seen.add(slug)
+                slugs.append(slug)
+    return slugs
+
+
+async def _catalog_names(
+    db: AsyncSession,
+    subject_slugs: list[str],
+    limit: int = 40,
+    concept_slugs: list[str] | None = None,
+) -> list[str]:
     """Concept names the app can open, biased to what the learner studies.
 
     Passed to the model so `related_concepts` comes back as things that
     actually resolve to a page. Capped, because the whole catalog is 133 names
     and most of them are irrelevant to any one question.
     """
+    if concept_slugs:
+        preferred = list(
+            (
+                await db.execute(
+                    select(Concept.name)
+                    .where(Concept.slug.in_(concept_slugs))
+                    .order_by(Concept.sort_order)
+                    .limit(limit)
+                )
+            ).scalars().all()
+        )
+        if len(preferred) >= limit:
+            return preferred
+        remaining = limit - len(preferred)
+        extra = await _catalog_names(db, subject_slugs, limit=remaining + len(preferred))
+        seen = set(preferred)
+        for name in extra:
+            if name not in seen:
+                preferred.append(name)
+                seen.add(name)
+            if len(preferred) >= limit:
+                break
+        return preferred[:limit]
     stmt = select(Concept.name).order_by(Concept.sort_order).limit(limit)
     if subject_slugs:
         stmt = (
@@ -124,7 +180,7 @@ async def ask(
     subjects = list(profile.subject_order) if profile else []
 
     known = await _known_concepts(db, user.id)
-    catalog = await _catalog_names(db, subjects)
+    catalog = await _catalog_names(db, subjects, concept_slugs=_area_concept_slugs(profile))
     user_prompt = explain_prompt.build_user_prompt(
         question=question,
         stage=profile.stage if profile else None,
@@ -134,6 +190,7 @@ async def ask(
         weak_subjects=list(profile.weak_subjects) if profile else None,
         current_courses=_course_context(profile),
         focus_goals=_focus_context(profile),
+        focus_areas=_area_context(profile),
         mode=mode,
         known_concepts=known,
         content_title=content.title if content else None,
@@ -187,6 +244,7 @@ async def ask(
         queries=explanation.search_queries or [explanation.concept or question],
         related_names=explanation.related_concepts,
         exclude_content_id=content_id,
+        language=language_key(profile.language if profile else None) or "en",
     )
     return row, explanation, rail
 
@@ -198,6 +256,7 @@ async def build_discovery_rail(
     related_names: list[str],
     exclude_content_id: uuid.UUID | None = None,
     per_bucket: int = 6,
+    language: str | None = None,
 ) -> dict:
     """Turn the model's own search terms into things to watch, read and discuss.
 
@@ -221,7 +280,7 @@ async def build_discovery_rail(
         for term in terms:
             for kind in media_kinds:
                 for row in await content_service.search(
-                    db, query=term, limit=per_bucket, media_kind=kind
+                    db, query=term, limit=per_bucket, media_kind=kind, language=language
                 ):
                     if row.id != exclude_content_id and row.id not in found:
                         found[row.id] = row
@@ -237,21 +296,22 @@ async def build_discovery_rail(
     words = {w for term in terms for w in re.split(r"\W+", term) if len(w) > 3}
     discuss: list[Discussion] = []
     if words:
-        discuss = list(
-            (
-                await db.execute(
-                    select(Discussion)
-                    .where(
-                        or_(
-                            *[Discussion.title.ilike(f"%{w}%") for w in words],
-                            *[Discussion.body.ilike(f"%{w}%") for w in words],
-                        )
-                    )
-                    .order_by(Discussion.upvotes.desc())
-                    .limit(4)
-                )
-            ).scalars()
+        stmt = select(Discussion).where(
+            or_(
+                *[Discussion.title.ilike(f"%{w}%") for w in words],
+                *[Discussion.body.ilike(f"%{w}%") for w in words],
+            )
         )
+        if language:
+            stmt = stmt.where(language_clause(Discussion.language, language))
+        discuss = [
+            row
+            for row in (
+                await db.execute(stmt.order_by(Discussion.upvotes.desc()).limit(12))
+            ).scalars()
+            if not language
+            or content_matches_language(row.language, row.title, row.body, language)
+        ][:4]
 
     related = await resolve_concepts(db, related_names)
     return {"watch": watch, "read": read, "discuss": discuss, "related_concepts": related}

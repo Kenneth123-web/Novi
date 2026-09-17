@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novi.areas import area_slugs
 from novi.core.errors import ValidationFailed
 from novi.curriculum import (
     FOCUS_GOALS,
@@ -186,6 +187,57 @@ def _normalise_focus_goals(
     return {slug: goals[slug] for slug in focus if slug in goals}
 
 
+def _normalise_focus_areas(
+    subjects: list[str],
+    raw: dict[str, list[str]] | None,
+    *,
+    require_all: bool,
+    drop_unknown: bool = False,
+) -> dict[str, list[str]]:
+    """Validate within-subject area picks.
+
+    Empty `raw` is the legacy meaning: the whole subject. New clients send
+    at least one area per current/focus subject so ranking can tell genetics
+    from ecology.
+    """
+    incoming = raw or {}
+    extra = [slug for slug in incoming if slug not in subjects]
+    if extra and not drop_unknown:
+        raise ValidationFailed(
+            "Focus areas must belong to a subject you study or strengthen",
+            details={"field": "focus_areas", "unknown": extra},
+        )
+
+    out: dict[str, list[str]] = {}
+    missing: list[str] = []
+    for subject in subjects:
+        allowed = area_slugs(subject)
+        picked = _unique(incoming.get(subject) or [])
+        unknown = [slug for slug in picked if slug not in allowed]
+        if unknown and drop_unknown:
+            picked = [slug for slug in picked if slug in allowed]
+        elif unknown:
+            raise ValidationFailed(
+                f"Unknown areas for {subject}",
+                details={
+                    "field": "focus_areas",
+                    "subject": subject,
+                    "unknown": unknown,
+                    "allowed": sorted(allowed),
+                },
+            )
+        if require_all and allowed and not picked:
+            missing.append(subject)
+        if picked:
+            out[subject] = picked
+    if require_all and missing:
+        raise ValidationFailed(
+            "Pick at least one area inside each subject",
+            details={"field": "focus_areas", "missing": missing},
+        )
+    return out
+
+
 def _normalise_courses(
     selections: list[CurrentCourseSelection],
     *,
@@ -312,6 +364,12 @@ async def apply_onboarding(
         body.focus_goals,
         require_all=explicit_focus,
     )
+    area_subjects = _unique(course_subjects + focus)
+    focus_areas = _normalise_focus_areas(
+        area_subjects,
+        body.focus_areas,
+        require_all=body.focus_areas is not None,
+    )
     subject_order = course_subjects + [slug for slug in focus if slug not in course_subjects]
     await _validate_subjects(db, subject_order)
 
@@ -323,6 +381,7 @@ async def apply_onboarding(
     profile.weak_subjects = focus
     profile.current_courses = current_courses
     profile.focus_goals = focus_goals
+    profile.focus_areas = focus_areas
     profile.learning_preferences = list(body.learning_preferences)
     profile.goals = list(body.goals)
     profile.language = body.language
@@ -345,6 +404,7 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
         "current_courses",
         "focus_subject_slugs",
         "focus_goals",
+        "focus_areas",
         "subject_slugs",
         "weak_subject_slugs",
     }
@@ -471,6 +531,18 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
             raw_goals,
             require_all=focus_changed and explicit_focus,
         )
+        area_subjects = _unique(course_subjects + focus)
+        raw_areas = (
+            body.focus_areas
+            if body.focus_areas is not None
+            else dict(profile.focus_areas or {})
+        )
+        focus_areas = _normalise_focus_areas(
+            area_subjects,
+            raw_areas,
+            require_all=body.focus_areas is not None,
+            drop_unknown=body.focus_areas is None,
+        )
         subject_order = course_subjects + [
             slug for slug in focus if slug not in course_subjects
         ]
@@ -481,6 +553,7 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
         profile.current_courses = current_courses
         profile.weak_subjects = focus
         profile.focus_goals = focus_goals
+        profile.focus_areas = focus_areas
         _set_subject_order(profile, subject_order, reset=False)
 
     for field in ("language", "bio"):

@@ -45,6 +45,19 @@ class CurriculumCourseOut(BaseModel):
     level: int
 
 
+class SubjectAreaOut(BaseModel):
+    slug: str
+    name: str
+    blurb: str
+    concept_slugs: list[str]
+
+
+class SubjectAreasOut(BaseModel):
+    subject_slug: str
+    subject_name: str
+    areas: list[SubjectAreaOut]
+
+
 class GradeCurriculumOut(BaseModel):
     stage: str
     grade: str
@@ -74,6 +87,11 @@ class PassportCourseConceptOut(BaseModel):
     confidence: float
 
 
+class PassportAreaOut(BaseModel):
+    slug: str
+    name: str
+
+
 class PassportCourseOut(BaseModel):
     slug: str
     subject_slug: str
@@ -89,6 +107,7 @@ class PassportCourseOut(BaseModel):
     is_current: bool
     is_focus: bool
     focus_goal: str | None = None
+    focus_areas: list[PassportAreaOut] = Field(default_factory=list)
     recommendation_reason: str
     status: str
     progress: float

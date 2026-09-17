@@ -31,6 +31,7 @@ struct ProfileDTO: Decodable, Equatable {
     let weakSubjects: [String]
     let currentCourses: [CurrentCourseSelectionDTO]
     let focusGoals: [String: String]
+    let focusAreas: [String: [String]]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -375,6 +376,10 @@ struct LoginBody: Encodable {
 
 struct DevSkipBody: Encodable {
     var secret: String = ""
+    /// Which install is asking. The server keys the developer account on it,
+    /// so a reinstall starts empty instead of inheriting the last tester's
+    /// profile and history.
+    var deviceId: String = InstallIdentity.current.id
 }
 
 struct RefreshBody: Encodable {

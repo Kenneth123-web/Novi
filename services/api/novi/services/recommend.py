@@ -17,10 +17,11 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from sqlalchemy import case, func, select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from novi.core.lang import language_key
+from novi.areas import area_for_concept, area_name, concepts_for_areas
+from novi.core.lang import content_matches_language, language_clause, language_key
 from novi.models import (
     MASTERY_RANK,
     Concept,
@@ -33,13 +34,14 @@ from novi.models import (
 )
 
 WEIGHTS = {
-    "interest": 0.24,
-    "gap": 0.22,
-    "struggle": 0.14,
-    "quality": 0.13,
-    "recent": 0.13,
-    "format": 0.09,
-    "fresh": 0.05,
+    "interest": 0.18,
+    "gap": 0.16,
+    "area": 0.22,
+    "struggle": 0.12,
+    "quality": 0.12,
+    "recent": 0.10,
+    "format": 0.07,
+    "fresh": 0.03,
 }
 
 # Content whose only concepts are already "mastered" is not worth the slot.
@@ -66,6 +68,7 @@ class Scored:
     score: float
     components: dict[str, float] = field(default_factory=dict)
     reason: str = ""
+    area_key: str = ""
 
 
 def _gap_score(mastery_ranks: list[int], difficulty: int, stage_level: int) -> float:
@@ -139,6 +142,12 @@ async def rank_feed(
     interests: dict[str, float] = dict(profile.subject_interests) if profile else {}
     preferences = set(profile.learning_preferences) if profile else set()
     weak = set(profile.weak_subjects) if profile else set()
+    focus_areas: dict[str, list[str]] = dict(profile.focus_areas) if profile else {}
+    selected_concepts = {
+        subject: concepts_for_areas(subject, areas)
+        for subject, areas in focus_areas.items()
+        if areas
+    }
     stage_level = _learner_level(profile)
     pref_lang = language_key(profile.language if profile else None) or "en"
 
@@ -164,7 +173,7 @@ async def rank_feed(
         ).scalars()
     )
 
-    stmt = select(Content).limit(pool)
+    stmt = select(Content).where(language_clause(Content.language, pref_lang)).limit(pool)
     if subject_slug:
         stmt = stmt.join(Subject, Content.subject_id == Subject.id).where(
             Subject.slug == subject_slug
@@ -174,28 +183,35 @@ async def rank_feed(
         wanted = [sid for sid, slug in subjects.items() if interests.get(slug, 0) > 0.05]
         if wanted:
             stmt = stmt.where(Content.subject_id.in_(wanted))
-    # Language first, then quality. A 250-row Chinese ingest otherwise fills
-    # the candidate window before English YouTube / Reddit rows are scored.
-    stmt = stmt.order_by(
-        case((Content.language.ilike(f"{pref_lang}%"), 0), else_=1),
-        Content.quality.desc(),
-    )
+    stmt = stmt.order_by(Content.quality.desc())
 
-    candidates = [c for c in (await db.execute(stmt)).scalars() if c.id not in seen]
+    candidates = [
+        content
+        for content in (await db.execute(stmt)).scalars()
+        if content.id not in seen
+        and content_matches_language(
+            content.language, content.title, content.description, pref_lang
+        )
+    ]
     if not candidates:
         return []
 
     # ── Signals ──────────────────────────────────────────────────────────────
     concept_rows = (
         await db.execute(
-            select(ContentConcept.content_id, ContentConcept.concept_id, Concept.difficulty)
+            select(
+                ContentConcept.content_id,
+                ContentConcept.concept_id,
+                Concept.difficulty,
+                Concept.slug,
+            )
             .join(Concept, Concept.id == ContentConcept.concept_id)
             .where(ContentConcept.content_id.in_([c.id for c in candidates]))
         )
     ).all()
-    by_content: dict[uuid.UUID, list[tuple[uuid.UUID, int]]] = {}
-    for content_id, concept_id, difficulty in concept_rows:
-        by_content.setdefault(content_id, []).append((concept_id, difficulty))
+    by_content: dict[uuid.UUID, list[tuple[uuid.UUID, int, str]]] = {}
+    for content_id, concept_id, difficulty, concept_slug in concept_rows:
+        by_content.setdefault(content_id, []).append((concept_id, difficulty, concept_slug))
 
     progress = {
         row.concept_id: MASTERY_RANK[row.mastery]
@@ -226,10 +242,12 @@ async def rank_feed(
         slug = subjects.get(content.subject_id, "")
         links = by_content.get(content.id, [])
         difficulty = content.difficulty or 2
+        concept_slugs = [slug for _, _, slug in links]
 
         interest = interests.get(slug, 0.1)
-        known = [progress[cid] for cid, _ in links if cid in progress]
+        known = [progress[cid] for cid, _, _ in links if cid in progress]
         gap = _gap_score(known, difficulty, stage_level)
+        area, area_slug = _area_score(slug, concept_slugs, selected_concepts)
         # Real ingested tutorials outrank generated stand-ins when both exist.
         quality = min(1.0, content.quality + (0.0 if content.is_sample else 0.08))
         recent = _recency_score(recent_by_subject.get(content.subject_id))
@@ -242,6 +260,7 @@ async def rank_feed(
         components = {
             "interest": interest,
             "gap": gap,
+            "area": area,
             "struggle": struggle,
             "quality": quality,
             "recent": recent,
@@ -254,7 +273,8 @@ async def rank_feed(
                 content=content,
                 score=total,
                 components=components,
-                reason=_reason(components, slug),
+                reason=_reason(components, slug, area_slug),
+                area_key=f"{slug}:{area_slug}" if area_slug else slug,
             )
         )
 
@@ -262,7 +282,27 @@ async def rank_feed(
     return _diversify(scored)[offset : offset + limit]
 
 
-def _reason(components: dict[str, float], subject_slug: str) -> str:
+def _area_score(
+    subject_slug: str,
+    concept_slugs: list[str],
+    selected_concepts: dict[str, set[str]],
+) -> tuple[float, str | None]:
+    """How well this card matches the part of the subject the learner named.
+
+    Unspecified areas mean the whole subject (legacy profiles). A miss inside
+    a named subject is still the right class, just the wrong chapter, so it
+    is not zeroed — it is pushed behind the chapters they actually picked.
+    """
+    wanted = selected_concepts.get(subject_slug)
+    if not wanted:
+        return 0.55, area_for_concept(subject_slug, concept_slugs[0]) if concept_slugs else None
+    for slug in concept_slugs:
+        if slug in wanted:
+            return 1.0, area_for_concept(subject_slug, slug)
+    return 0.12, area_for_concept(subject_slug, concept_slugs[0]) if concept_slugs else None
+
+
+def _reason(components: dict[str, float], subject_slug: str, area_slug: str | None) -> str:
     """The line under "Why this?" on the detail page.
 
     Generated from the components that actually produced the rank, so it can
@@ -270,9 +310,15 @@ def _reason(components: dict[str, float], subject_slug: str) -> str:
     """
     top = max(components, key=lambda k: WEIGHTS[k] * components[k])
     pretty = subject_slug.replace("-", " ") or "your subjects"
+    area_label = area_name(subject_slug, area_slug) if area_slug else ""
     return {
         "interest": f"You follow {pretty}",
         "gap": "A step beyond what you have covered",
+        "area": (
+            f"The {area_label.lower()} part of {pretty} you asked for"
+            if area_label
+            else f"A part of {pretty} you asked for"
+        ),
         "struggle": f"You said {pretty} is the hard one",
         "quality": "One of the best explanations we have on this",
         "recent": f"You have been working on {pretty}",

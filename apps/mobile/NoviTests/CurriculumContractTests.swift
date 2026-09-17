@@ -18,6 +18,11 @@ final class CurriculumContractTests: XCTestCase {
                 "exam_readiness", "get_ahead", "build_confidence",
             ]
         )
+        XCTAssertEqual(
+            Set(Onb.areas(for: "biology").map(\.slug)),
+            ["cells", "genetics", "physiology", "ecology"]
+        )
+        XCTAssertFalse(Onb.areas(for: "mathematics").isEmpty)
     }
 
     func testOnboardingBodyEncodesConcreteCourses() throws {
@@ -30,6 +35,7 @@ final class CurriculumContractTests: XCTestCase {
             ],
             focusSubjectSlugs: ["mathematics"],
             focusGoals: ["mathematics": "exam_readiness"],
+            focusAreas: ["mathematics": ["calculus"]],
             learningPreferences: ["short_video"],
             goals: ["exam_prep"],
             language: "en"
@@ -41,6 +47,7 @@ final class CurriculumContractTests: XCTestCase {
         XCTAssertNotNil(json["current_courses"])
         XCTAssertNotNil(json["focus_subject_slugs"])
         XCTAssertNotNil(json["focus_goals"])
+        XCTAssertNotNil(json["focus_areas"])
         XCTAssertNil(json["subject_slugs"])
     }
 
@@ -78,6 +85,7 @@ final class CurriculumContractTests: XCTestCase {
             "is_current": true,
             "is_focus": true,
             "focus_goal": "Prepare for an exam",
+            "focus_areas": [{"slug": "calculus", "name": "Calculus"}],
             "recommendation_reason": "Current course; Prepare for an exam in Mathematics.",
             "status": "in_progress",
             "progress": 0.4,
@@ -105,6 +113,7 @@ final class CurriculumContractTests: XCTestCase {
         XCTAssertEqual(course.name, "AP Calculus BC")
         XCTAssertEqual(course.statusLabel, "In progress")
         XCTAssertTrue(course.isCurrent)
+        XCTAssertEqual(course.focusAreas.first?.slug, "calculus")
         XCTAssertEqual(course.concepts.first?.name, "Derivatives")
     }
 
