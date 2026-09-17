@@ -59,6 +59,13 @@ def decode_access_token(token: str) -> dict[str, Any] | None:
     return payload if payload.get("typ") == "access" else None
 
 
+def needs_rehash(password_hash: str) -> bool:
+    try:
+        return _hasher.check_needs_rehash(password_hash)
+    except (InvalidHashError, ValueError):
+        return False
+
+
 def new_opaque_token() -> str:
     return secrets.token_urlsafe(32)
 
