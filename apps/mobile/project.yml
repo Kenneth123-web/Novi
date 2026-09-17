@@ -90,3 +90,18 @@ targets:
         # DEVELOPMENT_TEAM comes from Configs/Local.xcconfig, which is
         # gitignored — a team id is per-person, and a device build under
         # somebody else's Apple ID cannot register this bundle id anyway.
+
+  NoviTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: NoviTests
+    dependencies:
+      - target: Novi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: luke.novi.app.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+

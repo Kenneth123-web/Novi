@@ -99,4 +99,26 @@ enum Onb {
         .init(slug: "curiosity", label: "Personal curiosity",
               detail: "No particular reason"),
     ]
+
+    /// A goal is attached to each focus subject, not to the profile in the
+    /// abstract. The API serves the same slugs from /onboarding/options.
+    static let focusGoals: [Option] = [
+        .init(slug: "build_foundations", label: "Build foundations",
+              detail: "Repair prerequisite gaps first"),
+        .init(slug: "catch_up", label: "Catch up",
+              detail: "Get back in step with class"),
+        .init(slug: "improve_grades", label: "Improve grades",
+              detail: "Turn understanding into results"),
+        .init(slug: "exam_readiness", label: "Prepare for an exam",
+              detail: "Practice recall, timing and patterns"),
+        .init(slug: "get_ahead", label: "Get ahead",
+              detail: "Preview what comes next"),
+        .init(slug: "build_confidence", label: "Build confidence",
+              detail: "Make the subject feel manageable"),
+    ]
+
+    static func focusGoalLabel(_ slug: String?) -> String {
+        guard let slug else { return "Choose a goal" }
+        return focusGoals.first { $0.slug == slug }?.label ?? "Choose a goal"
+    }
 }

@@ -133,3 +133,25 @@ jobs:
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/dd" \
             build
+
+      - name: Unit tests
+        run: |
+          dest=$(python3 - <<'PY'
+          import json, subprocess, sys
+          data = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"]
+          ))
+          for runtime, devices in data.get("devices", {}).items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable") and "iPhone" in device.get("name", ""):
+                      print(f"platform=iOS Simulator,id={device['udid']}")
+                      sys.exit(0)
+          sys.exit("no available iPhone simulator")
+          PY
+          )
+          xcodebuild -project apps/mobile/Novi.xcodeproj -scheme Novi \
+            -destination "$dest" \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            test -only-testing:NoviTests

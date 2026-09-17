@@ -40,6 +40,11 @@ async def test_onboarding_sets_profile_and_orders_interests(
     assert weights["mathematics"] > weights["computer-science"] > weights["physics"]
     assert profile["grade"] == "11"
     assert profile["weak_subjects"] == ["mathematics"]
+    assert [item["course_slug"] for item in profile["current_courses"]] == [
+        "high-11-mathematics",
+        "high-11-computer-science",
+        "high-11-physics",
+    ]
 
 
 async def test_onboarding_rejects_unknown_values(

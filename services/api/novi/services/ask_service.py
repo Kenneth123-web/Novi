@@ -18,6 +18,7 @@ from novi.ai.gateway import gateway
 from novi.ai.prompts import explain as explain_prompt
 from novi.core.errors import NotFound
 from novi.core.logging import get_logger
+from novi.curriculum import course_for_slug, focus_goal_label
 from novi.models import (
     AIResponse,
     Concept,
@@ -36,6 +37,41 @@ from novi.services import content_service, knowledge
 
 logger = get_logger(__name__)
 
+
+
+def _course_context(profile: Profile | None) -> list[str]:
+    if profile is None:
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for raw in profile.current_courses or []:
+        if not isinstance(raw, dict):
+            continue
+        slug = raw.get("course_slug")
+        if not isinstance(slug, str) or slug in seen:
+            continue
+        course = course_for_slug(slug)
+        if course is None:
+            continue
+        seen.add(slug)
+        local_name = raw.get("name")
+        names.append(
+            " ".join(local_name.split())
+            if isinstance(local_name, str) and local_name.strip()
+            else course.name
+        )
+    return names
+
+
+def _focus_context(profile: Profile | None) -> list[str]:
+    if profile is None:
+        return []
+    context: list[str] = []
+    for subject in profile.weak_subjects or []:
+        goal = focus_goal_label((profile.focus_goals or {}).get(subject))
+        name = subject.replace("-", " ").title()
+        context.append(f"{name}: {goal}" if goal else name)
+    return context
 
 
 async def _catalog_names(db: AsyncSession, subject_slugs: list[str], limit: int = 40) -> list[str]:
@@ -96,6 +132,8 @@ async def ask(
         curriculum=profile.curriculum if profile else None,
         subjects=subjects,
         weak_subjects=list(profile.weak_subjects) if profile else None,
+        current_courses=_course_context(profile),
+        focus_goals=_focus_context(profile),
         mode=mode,
         known_concepts=known,
         content_title=content.title if content else None,

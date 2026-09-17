@@ -68,6 +68,8 @@ def build_user_prompt(
     curriculum: str | None = None,
     subjects: list[str] | None = None,
     weak_subjects: list[str] | None = None,
+    current_courses: list[str] | None = None,
+    focus_goals: list[str] | None = None,
     mode: str = "explain",
     known_concepts: list[str] | None = None,
     content_title: str | None = None,
@@ -91,9 +93,16 @@ def build_user_prompt(
         context.append(f"Curriculum: {curriculum}.")
     if subjects:
         context.append(f"They study: {', '.join(subjects[:5])}.")
-    if weak_subjects:
+    if current_courses:
+        context.append(f"Their current classes are: {', '.join(current_courses[:8])}.")
+    if focus_goals:
         context.append(
-            "They are stuck on: " + ", ".join(weak_subjects[:5]) + ". "
+            "Their learning focus is: " + "; ".join(focus_goals[:5]) + ". "
+            "Use that goal to choose depth, examples and practice."
+        )
+    elif weak_subjects:
+        context.append(
+            "They want extra support in: " + ", ".join(weak_subjects[:5]) + ". "
             "Spend extra care on intuition and the mistakes students actually make there."
         )
     if known_concepts:

@@ -70,6 +70,19 @@ class Profile(Base, TimestampMixin):
     weak_subjects: Mapped[list[str]] = mapped_column(
         ARRAY(String(48)), nullable=False, default=list, server_default="{}"
     )
+    # Concrete grade-catalog classes, in pick order. Each JSON object is
+    # {"course_slug": <stable catalog key>, "name": <optional local title>}.
+    # The slug drives recommendations; the learner's exact title is preserved
+    # for the tutor and passport instead of being folded down to a subject.
+    current_courses: Mapped[list[dict[str, str]]] = mapped_column(
+        JSONB, nullable=False, default=list, server_default="[]"
+    )
+    # Per focus subject, a controlled goal slug. This stays separate from the
+    # broad product goals below: "prepare for an exam in mathematics" is useful
+    # recommendation context; "exam prep somewhere" is not.
+    focus_goals: Mapped[dict[str, str]] = mapped_column(
+        JSONB, nullable=False, default=dict, server_default="{}"
+    )
     goals: Mapped[list[str]] = mapped_column(ARRAY(String(48)), nullable=False, default=list)
 
     language: Mapped[str] = mapped_column(String(16), nullable=False, default="en")

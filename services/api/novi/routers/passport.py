@@ -18,6 +18,7 @@ from novi.schemas.ai import (
     QuizSubmission,
     StampOut,
 )
+from novi.schemas.curriculum import PassportOverviewOut
 from novi.services import knowledge, passport_service, quiz_service
 
 router = APIRouter(tags=["passport"])
@@ -74,8 +75,8 @@ async def submit_quiz(
 # ── Passport ─────────────────────────────────────────────────────────────────
 
 
-@router.get("/passport")
-async def passport(user: CurrentUser, db: DB) -> dict:
+@router.get("/passport", response_model=PassportOverviewOut)
+async def passport(user: CurrentUser, db: DB) -> PassportOverviewOut:
     return await passport_service.overview(db, user.id)
 
 

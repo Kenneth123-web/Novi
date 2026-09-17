@@ -3,13 +3,12 @@ from __future__ import annotations
 from fastapi import APIRouter
 
 from novi.core.deps import DB, CurrentUser
+from novi.curriculum import FOCUS_GOALS, GRADES_BY_STAGE, STAGES
 from novi.schemas.auth import UserOut
 from novi.schemas.profile import (
     CURRICULA,
     GOALS,
-    GRADES_BY_STAGE,
     LEARNING_PREFERENCES,
-    STAGES,
     MeOut,
     OnboardingRequest,
     ProfileOut,
@@ -52,6 +51,10 @@ async def onboarding_options() -> dict:
         "curricula": CURRICULA,
         "learning_preferences": LEARNING_PREFERENCES,
         "goals": GOALS,
+        "focus_goals": [
+            {"slug": slug, "label": label, "description": description}
+            for slug, (label, description) in FOCUS_GOALS.items()
+        ],
     }
 
 

@@ -8,15 +8,23 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novi.core.errors import ValidationFailed
+from novi.curriculum import (
+    FOCUS_GOALS,
+    STAGES,
+    allowed_grades,
+    course_for_slug,
+    courses_for_grade,
+    inferred_courses,
+    remap_courses,
+)
 from novi.models import Profile, Subject, User
+from novi.schemas.curriculum import CurrentCourseSelection
 from novi.schemas.profile import (
     CURRICULA,
     GOALS,
     LEARNING_PREFERENCES,
-    STAGES,
     OnboardingRequest,
     ProfileUpdate,
-    allowed_grades,
 )
 
 # Interest weight a subject starts at when picked in onboarding, by rank.
@@ -45,6 +53,14 @@ def _seed_interests(slugs: list[str]) -> dict[str, float]:
     return {slug: round(TOP_INTEREST - i * step, 3) for i, slug in enumerate(slugs)}
 
 
+def _unique(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(values))
+
+
+def _clean_name(value: str) -> str:
+    return " ".join(value.split())
+
+
 async def get_or_create(db: AsyncSession, user: User) -> Profile:
     profile = (
         await db.execute(select(Profile).where(Profile.user_id == user.id))
@@ -57,6 +73,11 @@ async def get_or_create(db: AsyncSession, user: User) -> Profile:
 
 
 async def _validate_subjects(db: AsyncSession, slugs: list[str]) -> None:
+    if not slugs:
+        raise ValidationFailed(
+            "Pick at least one subject",
+            details={"field": "subject_slugs"},
+        )
     known = {
         s.slug for s in (await db.execute(select(Subject).where(Subject.slug.in_(slugs)))).scalars()
     }
@@ -82,20 +103,158 @@ def _validate_grade(stage: str, grade: str | None) -> None:
         )
 
 
-def _validate_weak(slugs: list[str], weak: list[str]) -> list[str]:
-    chosen = list(dict.fromkeys(weak))
-    unknown = [s for s in chosen if s not in slugs]
+def _focus_input(
+    focus_subject_slugs: list[str] | None,
+    weak_subject_slugs: list[str] | None,
+) -> tuple[list[str], bool]:
+    """Resolve the new name and its legacy alias without allowing disagreement."""
+    if focus_subject_slugs is not None and weak_subject_slugs is not None:
+        focus = _unique(focus_subject_slugs)
+        weak = _unique(weak_subject_slugs)
+        if focus != weak:
+            raise ValidationFailed(
+                "Focus subjects disagree with the legacy weak-subject list",
+                details={"field": "focus_subject_slugs"},
+            )
+    explicit_new = focus_subject_slugs is not None
+    values = focus_subject_slugs if explicit_new else weak_subject_slugs
+    return _unique(values or []), explicit_new
+
+
+def _validate_legacy_focus(subjects: list[str], focus: list[str]) -> None:
+    unknown = [slug for slug in focus if slug not in subjects]
     if unknown:
         raise ValidationFailed(
-            "Stuck-on subjects must be among the subjects you picked",
+            "Focus subjects must be among the subjects you picked",
             details={"field": "weak_subject_slugs", "unknown": unknown},
         )
-    if not chosen:
+
+
+def _validate_focus(
+    focus: list[str],
+    *,
+    available_subjects: set[str],
+    field: str,
+    required: bool,
+    drop_unknown: bool = False,
+) -> list[str]:
+    unknown = [slug for slug in focus if slug not in available_subjects]
+    if unknown and drop_unknown:
+        focus = [slug for slug in focus if slug in available_subjects]
+    elif unknown:
         raise ValidationFailed(
-            "Pick at least one subject you are stuck on",
-            details={"field": "weak_subject_slugs"},
+            "Unknown focus subjects",
+            details={"field": field, "unknown": unknown},
         )
-    return chosen
+    if required and not focus:
+        raise ValidationFailed(
+            "Pick at least one subject to strengthen",
+            details={"field": field},
+        )
+    return focus
+
+
+def _normalise_focus_goals(
+    focus: list[str],
+    goals: dict[str, str],
+    *,
+    require_all: bool,
+) -> dict[str, str]:
+    extra = [slug for slug in goals if slug not in focus]
+    if extra:
+        raise ValidationFailed(
+            "A focus goal must belong to a selected focus subject",
+            details={"field": "focus_goals", "unknown": extra},
+        )
+    invalid = {slug: goal for slug, goal in goals.items() if goal not in FOCUS_GOALS}
+    if invalid:
+        raise ValidationFailed(
+            "Unknown focus goal",
+            details={
+                "field": "focus_goals",
+                "invalid": invalid,
+                "allowed": list(FOCUS_GOALS),
+            },
+        )
+    if require_all:
+        missing = [slug for slug in focus if slug not in goals]
+        if missing:
+            raise ValidationFailed(
+                "Choose a goal for every focus subject",
+                details={"field": "focus_goals", "missing": missing},
+            )
+    return {slug: goals[slug] for slug in focus if slug in goals}
+
+
+def _normalise_courses(
+    selections: list[CurrentCourseSelection],
+    *,
+    stage: str,
+    grade: str,
+    required: bool,
+) -> list[dict[str, str]]:
+    available = {course.slug for course in courses_for_grade(stage, grade)}
+    unknown = [item.course_slug for item in selections if item.course_slug not in available]
+    if unknown:
+        raise ValidationFailed(
+            "A selected course does not belong to this grade",
+            details={"field": "current_courses", "unknown": _unique(unknown)},
+        )
+
+    out: list[dict[str, str]] = []
+    indexes: dict[str, int] = {}
+    for item in selections:
+        name = _clean_name(item.name)
+        if item.course_slug in indexes:
+            # Duplicate taps collapse to one selection. If only one copy has a
+            # local class name, retain the informative copy.
+            index = indexes[item.course_slug]
+            if name and not out[index]["name"]:
+                out[index]["name"] = name
+            continue
+        indexes[item.course_slug] = len(out)
+        out.append({"course_slug": item.course_slug, "name": name})
+
+    if required and not out:
+        raise ValidationFailed(
+            "Pick at least one course you are taking",
+            details={"field": "current_courses"},
+        )
+    return out
+
+
+def _stored_courses(profile: Profile) -> list[CurrentCourseSelection]:
+    parsed: list[CurrentCourseSelection] = []
+    for raw in profile.current_courses or []:
+        try:
+            parsed.append(CurrentCourseSelection.model_validate(raw))
+        except (TypeError, ValueError):
+            # A malformed historical JSON object must not break /me or every
+            # authenticated request. It is dropped and the subject fallback
+            # below rebuilds the useful part.
+            continue
+    return parsed
+
+
+def _subjects_for_courses(courses: list[dict[str, str]]) -> list[str]:
+    subjects: list[str] = []
+    for selection in courses:
+        course = course_for_slug(selection["course_slug"])
+        if course and course.subject_slug not in subjects:
+            subjects.append(course.subject_slug)
+    return subjects
+
+
+def _set_subject_order(profile: Profile, slugs: list[str], *, reset: bool) -> None:
+    if reset:
+        profile.subject_interests = _seed_interests(slugs)
+    else:
+        seeded = _seed_interests(slugs)
+        merged = dict(profile.subject_interests)
+        for slug, weight in seeded.items():
+            merged.setdefault(slug, weight)
+        profile.subject_interests = {slug: merged[slug] for slug in slugs}
+    profile.subject_order = slugs
 
 
 async def apply_onboarding(
@@ -111,19 +270,59 @@ async def apply_onboarding(
     _reject("learning_preferences", body.learning_preferences, LEARNING_PREFERENCES)
     _reject("goals", body.goals, GOALS)
 
-    # Duplicates would distort the interest weights, so they are dropped while
-    # the caller's ordering is preserved.
-    slugs = list(dict.fromkeys(body.subject_slugs))
-    await _validate_subjects(db, slugs)
-    weak = _validate_weak(slugs, body.weak_subject_slugs)
+    available_subjects = {
+        course.subject_slug for course in courses_for_grade(body.stage, body.grade)
+    }
+    if body.current_courses is not None:
+        current_courses = _normalise_courses(
+            body.current_courses,
+            stage=body.stage,
+            grade=body.grade,
+            required=True,
+        )
+        course_subjects = _subjects_for_courses(current_courses)
+        if body.subject_slugs is not None:
+            legacy_subjects = _unique(body.subject_slugs)
+            await _validate_subjects(db, legacy_subjects)
+            if legacy_subjects != course_subjects:
+                raise ValidationFailed(
+                    "Subjects disagree with the selected courses",
+                    details={"field": "subject_slugs"},
+                )
+    else:
+        legacy_subjects = _unique(body.subject_slugs or [])
+        await _validate_subjects(db, legacy_subjects)
+        current_courses = inferred_courses(body.stage, body.grade, legacy_subjects)
+        course_subjects = _subjects_for_courses(current_courses)
+
+    focus, explicit_focus = _focus_input(
+        body.focus_subject_slugs,
+        body.weak_subject_slugs,
+    )
+    if not explicit_focus:
+        _validate_legacy_focus(course_subjects, focus)
+    focus = _validate_focus(
+        focus,
+        available_subjects=available_subjects,
+        field="focus_subject_slugs" if explicit_focus else "weak_subject_slugs",
+        required=True,
+    )
+    focus_goals = _normalise_focus_goals(
+        focus,
+        body.focus_goals,
+        require_all=explicit_focus,
+    )
+    subject_order = course_subjects + [slug for slug in focus if slug not in course_subjects]
+    await _validate_subjects(db, subject_order)
 
     profile = await get_or_create(db, user)
     profile.stage = body.stage
     profile.grade = body.grade
     profile.curriculum = body.curriculum
-    profile.subject_order = slugs
-    profile.subject_interests = _seed_interests(slugs)
-    profile.weak_subjects = weak
+    _set_subject_order(profile, subject_order, reset=True)
+    profile.weak_subjects = focus
+    profile.current_courses = current_courses
+    profile.focus_goals = focus_goals
     profile.learning_preferences = list(body.learning_preferences)
     profile.goals = list(body.goals)
     profile.language = body.language
@@ -137,12 +336,29 @@ async def apply_onboarding(
 async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
     profile = await get_or_create(db, user)
 
-    if body.stage is not None:
-        if body.stage not in STAGES:
-            raise ValidationFailed("Unknown stage", details={"field": "stage", "allowed": STAGES})
-        profile.stage = body.stage
-    if body.curriculum is not None:
-        if body.curriculum not in CURRICULA:
+    effective_stage = body.stage if body.stage is not None else profile.stage
+    effective_grade = body.grade if body.grade is not None else profile.grade
+    learning_fields = {
+        "stage",
+        "grade",
+        "curriculum",
+        "current_courses",
+        "focus_subject_slugs",
+        "focus_goals",
+        "subject_slugs",
+        "weak_subject_slugs",
+    }
+    learning_change = bool(body.model_fields_set & learning_fields)
+    if learning_change:
+        if effective_stage not in STAGES:
+            raise ValidationFailed(
+                "Unknown stage",
+                details={"field": "stage", "allowed": STAGES},
+            )
+        _validate_grade(effective_stage, effective_grade)
+
+    if "curriculum" in body.model_fields_set:
+        if body.curriculum is not None and body.curriculum not in CURRICULA:
             raise ValidationFailed(
                 "Unknown curriculum", details={"field": "curriculum", "allowed": CURRICULA}
             )
@@ -153,33 +369,119 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
     if body.goals is not None:
         _reject("goals", body.goals, GOALS)
         profile.goals = body.goals
-    if body.subject_slugs is not None:
-        slugs = list(dict.fromkeys(body.subject_slugs))
-        await _validate_subjects(db, slugs)
-        profile.subject_order = slugs
-        # Re-seeding would wipe interest the learner earned by using the app.
-        # Only genuinely new subjects get a starting weight; existing ones keep
-        # whatever their behaviour has moved them to.
-        seeded = _seed_interests(slugs)
-        merged = dict(profile.subject_interests)
-        for slug, weight in seeded.items():
-            merged.setdefault(slug, weight)
-        for slug in list(merged):
-            if slug not in slugs:
-                del merged[slug]
-        profile.subject_interests = merged
-        # Dropping a subject drops it from the stuck-on list too.
-        profile.weak_subjects = [s for s in profile.weak_subjects if s in slugs]
 
-    if body.weak_subject_slugs is not None:
-        profile.weak_subjects = _validate_weak(
-            list(profile.subject_order), body.weak_subject_slugs
+    if learning_change:
+        assert effective_stage is not None and effective_grade is not None
+        available_subjects = {
+            course.subject_slug for course in courses_for_grade(effective_stage, effective_grade)
+        }
+        grade_changed = (
+            effective_stage != profile.stage or effective_grade != profile.grade
         )
 
-    if body.grade is not None:
-        stage = body.stage if body.stage is not None else profile.stage
-        _validate_grade(stage or "other", body.grade)
-        profile.grade = body.grade
+        if body.current_courses is not None:
+            current_courses = _normalise_courses(
+                body.current_courses,
+                stage=effective_stage,
+                grade=effective_grade,
+                required=True,
+            )
+        elif body.subject_slugs is not None:
+            legacy_subjects = _unique(body.subject_slugs)
+            await _validate_subjects(db, legacy_subjects)
+            current_courses = inferred_courses(
+                effective_stage,
+                effective_grade,
+                legacy_subjects,
+            )
+        elif grade_changed:
+            current_courses = remap_courses(
+                effective_stage,
+                effective_grade,
+                [item.model_dump() for item in _stored_courses(profile)],
+                extra_subjects=list(profile.subject_order),
+            )
+        else:
+            current_courses = _normalise_courses(
+                _stored_courses(profile),
+                stage=effective_stage,
+                grade=effective_grade,
+                required=False,
+            )
+            if not current_courses:
+                current_courses = inferred_courses(
+                    effective_stage,
+                    effective_grade,
+                    list(profile.subject_order),
+                )
+
+        course_subjects = _subjects_for_courses(current_courses)
+        if not current_courses:
+            raise ValidationFailed(
+                "Pick at least one course you are taking",
+                details={"field": "current_courses"},
+            )
+        if body.current_courses is not None and body.subject_slugs is not None:
+            legacy_subjects = _unique(body.subject_slugs)
+            await _validate_subjects(db, legacy_subjects)
+            if legacy_subjects != course_subjects:
+                raise ValidationFailed(
+                    "Subjects disagree with the selected courses",
+                    details={"field": "subject_slugs"},
+                )
+
+        focus_changed = (
+            body.focus_subject_slugs is not None
+            or body.weak_subject_slugs is not None
+        )
+        if focus_changed:
+            focus, explicit_focus = _focus_input(
+                body.focus_subject_slugs,
+                body.weak_subject_slugs,
+            )
+            if not explicit_focus:
+                _validate_legacy_focus(course_subjects, focus)
+            focus = _validate_focus(
+                focus,
+                available_subjects=available_subjects,
+                field=(
+                    "focus_subject_slugs"
+                    if explicit_focus
+                    else "weak_subject_slugs"
+                ),
+                required=True,
+            )
+        else:
+            explicit_focus = False
+            focus = _validate_focus(
+                _unique(list(profile.weak_subjects)),
+                available_subjects=available_subjects,
+                field="focus_subject_slugs",
+                required=False,
+                drop_unknown=grade_changed,
+            )
+
+        raw_goals = (
+            body.focus_goals
+            if body.focus_goals is not None
+            else dict(profile.focus_goals)
+        )
+        focus_goals = _normalise_focus_goals(
+            focus,
+            raw_goals,
+            require_all=focus_changed and explicit_focus,
+        )
+        subject_order = course_subjects + [
+            slug for slug in focus if slug not in course_subjects
+        ]
+        await _validate_subjects(db, subject_order)
+
+        profile.stage = effective_stage
+        profile.grade = effective_grade
+        profile.current_courses = current_courses
+        profile.weak_subjects = focus
+        profile.focus_goals = focus_goals
+        _set_subject_order(profile, subject_order, reset=False)
 
     for field in ("language", "bio"):
         value = getattr(body, field)

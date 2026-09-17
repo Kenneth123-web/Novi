@@ -29,6 +29,8 @@ struct ProfileDTO: Decodable, Equatable {
     let subjectOrder: [String]
     let subjectInterests: [String: Double]
     let weakSubjects: [String]
+    let currentCourses: [CurrentCourseSelectionDTO]
+    let focusGoals: [String: String]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -313,6 +315,8 @@ struct PassportDTO: Decodable {
     let subjects: Int
     let projects: Int
     let sessions: Int
+    let curriculum: PassportCurriculumContextDTO?
+    let courseMap: [PassportCourseDTO]
     let subjectCards: [PassportSubjectDTO]
     let stamps: [PassportStampDTO]
 }
