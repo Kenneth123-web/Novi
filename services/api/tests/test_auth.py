@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 from httpx import AsyncClient
 
@@ -162,11 +164,99 @@ async def test_dev_skip_issues_a_real_session(client: AsyncClient) -> None:
     assert me.json()["user"]["email"] == "developer@novi.app"
 
 
+async def test_dev_skip_returns_quickly(client: AsyncClient) -> None:
+    """A new install hashes a password; that must not block the event loop
+    long enough for the iOS client to report a timeout."""
+    started = time.perf_counter()
+    r = await client.post("/auth/dev-skip", json={"device_id": "speed-check"})
+    assert r.status_code == 200, r.text
+    assert time.perf_counter() - started < 3
+
+
 async def test_dev_skip_is_idempotent(client: AsyncClient) -> None:
     first = await client.post("/auth/dev-skip", json={})
     second = await client.post("/auth/dev-skip", json={})
     assert first.status_code == second.status_code == 200
     assert first.json()["user"]["id"] == second.json()["user"]["id"]
+
+
+async def test_dev_skip_is_scoped_to_the_install(client: AsyncClient) -> None:
+    """A reinstall sends a new id, and must not inherit the last one's data."""
+    one = await client.post("/auth/dev-skip", json={"device_id": "install-one"})
+    two = await client.post("/auth/dev-skip", json={"device_id": "install-two"})
+    assert one.status_code == two.status_code == 200, two.text
+    assert one.json()["user"]["id"] != two.json()["user"]["id"]
+    assert one.json()["user"]["email"] != two.json()["user"]["email"]
+    assert one.json()["user"]["is_onboarded"] is False
+    assert two.json()["user"]["is_onboarded"] is False
+
+    same = await client.post("/auth/dev-skip", json={"device_id": "install-one"})
+    assert same.json()["user"]["id"] == one.json()["user"]["id"]
+
+
+async def test_dev_skip_does_not_leak_the_shared_account_to_a_new_install(
+    client: AsyncClient, seeded: None
+) -> None:
+    shared = await client.post("/auth/dev-skip", json={})
+    headers = {"Authorization": f"Bearer {shared.json()['tokens']['access_token']}"}
+    onboarded = await client.post(
+        "/onboarding",
+        headers=headers,
+        json={
+            "stage": "high",
+            "grade": "11",
+            "subject_slugs": ["mathematics"],
+            "weak_subject_slugs": ["mathematics"],
+        },
+    )
+    assert onboarded.status_code == 200, onboarded.text
+
+    fresh = await client.post("/auth/dev-skip", json={"device_id": "brand-new-phone"})
+    assert fresh.status_code == 200, fresh.text
+    assert fresh.json()["user"]["is_onboarded"] is False
+    me = await client.get(
+        "/me",
+        headers={"Authorization": f"Bearer {fresh.json()['tokens']['access_token']}"},
+    )
+    assert me.json()["profile"]["grade"] in (None, "")
+    assert me.json()["profile"]["weak_subjects"] == []
+
+
+async def test_dev_skip_keeps_one_installs_profile_across_skips(
+    client: AsyncClient, seeded: None
+) -> None:
+    first = await client.post("/auth/dev-skip", json={"device_id": "returning-phone"})
+    headers = {"Authorization": f"Bearer {first.json()['tokens']['access_token']}"}
+    await client.post(
+        "/onboarding",
+        headers=headers,
+        json={
+            "stage": "high",
+            "grade": "12",
+            "subject_slugs": ["mathematics"],
+            "weak_subject_slugs": ["mathematics"],
+        },
+    )
+    again = await client.post("/auth/dev-skip", json={"device_id": "returning-phone"})
+    assert again.json()["user"]["is_onboarded"] is True
+    me = await client.get(
+        "/me",
+        headers={"Authorization": f"Bearer {again.json()['tokens']['access_token']}"},
+    )
+    assert me.json()["profile"]["grade"] == "12"
+
+
+async def test_device_developer_slots_cannot_be_registered(
+    client: AsyncClient, registration: dict
+) -> None:
+    skipped = await client.post("/auth/dev-skip", json={"device_id": "claim-me"})
+    taken = skipped.json()["user"]
+    r = await client.post(
+        "/auth/register",
+        json=dict(registration, email=taken["email"], username=taken["username"]),
+    )
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "ALREADY_EXISTS"
 
 
 async def test_dev_skip_hidden_in_production(

@@ -73,9 +73,15 @@ class RefreshRequest(BaseModel):
 
 class DevSkipRequest(BaseModel):
     """Body for POST /auth/dev-skip. `secret` is required only when the
-    server has DEV_SKIP_SECRET configured."""
+    server has DEV_SKIP_SECRET configured.
+
+    `device_id` scopes the developer account to one install. Without it every
+    skip shares a single row, so a freshly installed app inherits whatever
+    profile and history the last tester left behind.
+    """
 
     secret: str = ""
+    device_id: str = Field(default="", max_length=64)
 
 
 class TokenPair(BaseModel):

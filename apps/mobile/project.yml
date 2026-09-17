@@ -105,3 +105,30 @@ targets:
         CODE_SIGN_STYLE: Automatic
         "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
 
+  SkipTimeoutUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: SkipTimeoutUITests
+    dependencies:
+      - target: Novi
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: luke.novi.app.skiptimeout
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGN_STYLE: Automatic
+        "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
+        TEST_TARGET_NAME: Novi
+
+schemes:
+  Novi:
+    build:
+      targets:
+        Novi: all
+        NoviTests: [test]
+        SkipTimeoutUITests: [test]
+    test:
+      targets:
+        - NoviTests
+        - SkipTimeoutUITests
+
