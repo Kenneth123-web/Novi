@@ -34,7 +34,7 @@ LIMITS = {
 _buckets: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
 
 
-def _client_ip(request: Request) -> str:
+def client_ip(request: Request) -> str:
     """The connecting address, not a client-supplied X-Forwarded-For.
 
     A raw X-Forwarded-For is trivial to spoof and would mint a fresh bucket
@@ -58,7 +58,7 @@ def _key(request: Request, name: str) -> str:
     user = getattr(request.state, "user", None)
     if user is not None:
         return f"{name}:u:{user.id}"
-    return f"{name}:ip:{_client_ip(request)}"
+    return f"{name}:ip:{client_ip(request)}"
 
 
 def _check(request: Request, name: str) -> None:

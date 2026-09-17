@@ -19,10 +19,16 @@ apps/mobile/       SwiftUI client (iOS 17+)
 services/api/      FastAPI — the only thing that talks to the database
 services/edge/     Cloudflare Worker — custodian of the AI provider key
 services/console/  Cloudflare Worker — accounts, API usage, admin site
+services/turnstile-siteverify  Cloudflare Worker — Turnstile siteverify
 database/          Migrations and seed data
 docs/              Architecture, database, API
 scripts/dev.sh     Every command below, in one place
 ```
+
+Register and login send a Cloudflare Turnstile token. The API verifies it
+against `turnstile-siteverify-novi` before creating a user or a session.
+`POST /auth/dev-skip` does not require Turnstile. The sitekey is public; the
+secret is a Worker secret.
 
 ## Run it
 
@@ -204,7 +210,9 @@ xcrun simctl launch <UDID> luke.novi.app \
 
 `-demoEmail` signs in against the real API rather than faking a signed-in
 state. A screenshot of a state the server cannot produce is not evidence of
-anything.
+anything. Login now needs a Turnstile token, so this shortcut fails closed
+unless the launch also supplies a real token; `-demoSkipLogin` is the
+developer path and does not require CAPTCHA.
 
 ## Where the decisions are written down
 

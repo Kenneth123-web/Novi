@@ -228,18 +228,58 @@ function recordLoginFailure(ip: string): void {
   row.count += 1;
 }
 
+async function verifyTurnstile(
+  env: Env,
+  token: string | undefined,
+  ip: string,
+): Promise<Response | null> {
+  const url = (env.TURNSTILE_SITEVERIFY_URL || "").trim();
+  if (!url) return null;
+  const presented = (token || "").trim();
+  if (!presented) {
+    return err(400, "CAPTCHA_REQUIRED", "Complete the CAPTCHA and try again");
+  }
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: presented, remoteip: ip }),
+    });
+    const body = (await response.json()) as { success?: boolean };
+    if (body.success === true) return null;
+    return err(403, "CAPTCHA_FAILED", "CAPTCHA verification failed");
+  } catch (error) {
+    log("console_turnstile_unreachable", { error: String(error) });
+    return err(503, "CAPTCHA_UNAVAILABLE", "CAPTCHA verification is temporarily unavailable");
+  }
+}
+
 async function adminLogin(request: Request, env: Env): Promise<Response> {
   const ip = clientIp(request);
   if (loginLocked(ip)) {
     log("console_admin_login_rate_limited", { ip });
     return err(429, "RATE_LIMITED", "Too many attempts. Try again in a minute.");
   }
-  let body: { password?: string };
+  let body: {
+    password?: string;
+    turnstile_token?: string;
+    "cf-turnstile-response"?: string;
+  };
   try {
-    body = (await request.json()) as { password?: string };
+    body = (await request.json()) as {
+      password?: string;
+      turnstile_token?: string;
+      "cf-turnstile-response"?: string;
+    };
   } catch {
     return err(400, "BAD_REQUEST", "Body is not valid JSON");
   }
+  const captcha = await verifyTurnstile(
+    env,
+    body.turnstile_token || body["cf-turnstile-response"],
+    ip,
+  );
+  if (captcha) return captcha;
   const presented = body.password ?? "";
   if (!presented || !(await secretMatches(presented, env.ADMIN_PASSWORD))) {
     recordLoginFailure(ip);
@@ -501,6 +541,17 @@ export default {
         const rejected = await requireOrigin(request, env);
         if (rejected) return rejected;
         return await userStatus(env, pathname.slice("/api/ingest/status/".length));
+      }
+
+      if (pathname === "/api/captcha" && request.method === "GET") {
+        const sitekey = (env.TURNSTILE_SITEKEY || "").trim();
+        return json({
+          provider: "turnstile",
+          enabled: Boolean(sitekey && (env.TURNSTILE_SITEVERIFY_URL || "").trim()),
+          sitekey,
+          action: "turnstile-spin-v1",
+          widget_url: "/turnstile",
+        });
       }
 
       if (pathname === "/api/admin/login" && request.method === "POST") {

@@ -21,6 +21,11 @@ os.environ["JWT_SECRET"] = "test-secret-value-that-is-long-enough-00000"
 # Tests must never call the real gateway: it costs money and it makes the suite
 # depend on someone else's uptime. Individual tests install a fake.
 os.environ["AI_API_KEY"] = ""
+# Hermetic Turnstile: register/login still require a token. The verifier is
+# monkeypatched below so tests never call Cloudflare. The dummy token is
+# Cloudflare's documented test value.
+os.environ.setdefault("TURNSTILE_SITEKEY", "1x00000000000000000000AA")
+os.environ.setdefault("TURNSTILE_SITEVERIFY_URL", "https://turnstile.test/siteverify")
 
 import pytest
 from alembic import command
@@ -31,6 +36,8 @@ from sqlalchemy import text
 from novi.config import get_settings
 from novi.db import dispose_engine, get_sessionmaker
 from novi.main import create_app
+
+TEST_TURNSTILE_TOKEN = "XXXX.DUMMY.TOKEN"
 
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 
@@ -89,7 +96,35 @@ def registration() -> dict[str, str]:
         "username": f"student_{handle}",
         "password": "correct-horse-7",
         "display_name": "Test Student",
+        "turnstile_token": TEST_TURNSTILE_TOKEN,
     }
+
+
+@pytest.fixture(autouse=True)
+def stub_turnstile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Accept Cloudflare's dummy token; reject anything else. Fail closed."""
+    from novi.core.errors import APIError, Forbidden
+    from novi.services import turnstile
+
+    async def _fake(token: str, *, remote_ip: str | None = None) -> None:
+        del remote_ip
+        token = (token or "").strip()
+        if not token:
+            raise APIError(
+                "Complete the CAPTCHA and try again",
+                code="CAPTCHA_REQUIRED",
+                status_code=400,
+                details={"field": "turnstile_token"},
+            )
+        if token == TEST_TURNSTILE_TOKEN:
+            return
+        raise Forbidden(
+            "CAPTCHA verification failed",
+            code="CAPTCHA_FAILED",
+            details={"field": "turnstile_token"},
+        )
+
+    monkeypatch.setattr(turnstile, "verify_turnstile", _fake)
 
 
 @pytest.fixture

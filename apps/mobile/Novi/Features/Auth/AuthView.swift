@@ -20,6 +20,9 @@ struct AuthView: View {
 
     @State private var busy = false
     @State private var error: APIError?
+    @State private var captcha: CaptchaConfigDTO?
+    @State private var turnstileToken = ""
+    @State private var captchaEpoch = 0
     @FocusState private var focused: Field?
 
     private enum Field { case email, username, displayName, password }
@@ -38,10 +41,17 @@ struct AuthView: View {
 
                     // Field-level messages sit on their fields; this is for
                     // anything the server could not attribute to one.
-                    if let error, error.fieldErrors.isEmpty {
-                        NVErrorNote(message: error.message, retry: error.isRetryable ? submit : nil)
-                            .padding(.top, NV.Space.l)
+                    if let error,
+                       error.fieldErrors.isEmpty || error.message(for: "turnstile_token") != nil {
+                        NVErrorNote(
+                            message: error.message(for: "turnstile_token") ?? error.message,
+                            retry: error.isRetryable ? submit : nil
+                        )
+                        .padding(.top, NV.Space.l)
                     }
+
+                    captchaBox
+                        .padding(.top, NV.Space.l)
 
                     NVButton(
                         title: mode == .signIn ? "Sign in" : "Create account",
@@ -51,6 +61,7 @@ struct AuthView: View {
                     )
                     .padding(.top, NV.Space.xl)
 
+                    #if DEBUG
                     NVButton(
                         title: "Skip as developer",
                         kind: .quiet,
@@ -58,6 +69,7 @@ struct AuthView: View {
                         action: skipDeveloper
                     )
                     .padding(.top, NV.Space.s)
+                    #endif
 
                     toggleRow.padding(.top, NV.Space.l)
                     Spacer(minLength: NV.Space.section)
@@ -69,8 +81,14 @@ struct AuthView: View {
         }
         // Clearing on a mode flip stops "that email is already taken" sitting
         // above a sign-in form where it makes no sense.
-        .onChange(of: mode) { _, _ in error = nil }
-        .task { await session.prepareNetwork() }
+        .onChange(of: mode) { _, _ in
+            error = nil
+            resetCaptcha()
+        }
+        .task {
+            await session.prepareNetwork()
+            await loadCaptcha()
+        }
     }
 
     private var header: some View {
@@ -145,9 +163,53 @@ struct AuthView: View {
         .frame(maxWidth: .infinity)
     }
 
+    private var captchaBox: some View {
+        VStack(alignment: .leading, spacing: NV.Space.s) {
+            if let captcha, captcha.enabled, !captcha.sitekey.isEmpty {
+                TurnstileView(
+                    siteKey: captcha.sitekey,
+                    widgetURL: URL(string: captcha.widgetUrl),
+                    action: captcha.action.isEmpty ? "turnstile-spin-v1" : captcha.action,
+                    onToken: { turnstileToken = $0 },
+                    onReset: { turnstileToken = "" }
+                )
+                .id(captchaEpoch)
+                .frame(height: 72)
+            } else if captcha == nil {
+                ProgressView()
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 72)
+            } else {
+                Text("Couldn't load the CAPTCHA. Check the connection and try again.")
+                    .font(NV.small)
+                    .foregroundStyle(NV.inkSecondary)
+                Button("Retry") { Task { await loadCaptcha() } }
+                    .font(NV.smallStrong)
+                    .foregroundStyle(NV.spark)
+            }
+        }
+    }
+
     private var canSubmit: Bool {
-        guard email.contains("@"), password.count >= 8 else { return false }
+        guard email.contains("@"), password.count >= 8, !turnstileToken.isEmpty else { return false }
         return mode == .signIn || username.count >= 3
+    }
+
+    private func loadCaptcha() async {
+        do {
+            captcha = try await session.loadCaptchaConfig()
+        } catch {
+            captcha = CaptchaConfigDTO(
+                provider: "turnstile", enabled: false, sitekey: "",
+                action: "turnstile-spin-v1", widgetUrl: ""
+            )
+        }
+        resetCaptcha()
+    }
+
+    private func resetCaptcha() {
+        turnstileToken = ""
+        captchaEpoch += 1
     }
 
     private func submit() {
@@ -158,22 +220,28 @@ struct AuthView: View {
         Task {
             do {
                 if mode == .signIn {
-                    try await session.signIn(email: email, password: password)
+                    try await session.signIn(
+                        email: email, password: password, turnstileToken: turnstileToken
+                    )
                 } else {
                     try await session.signUp(
                         email: email, username: username, password: password,
-                        displayName: displayName.isEmpty ? username : displayName
+                        displayName: displayName.isEmpty ? username : displayName,
+                        turnstileToken: turnstileToken
                     )
                 }
             } catch let apiError as APIError {
                 error = apiError
+                resetCaptcha()
             } catch {
                 self.error = APIError.transport(error)
+                resetCaptcha()
             }
             busy = false
         }
     }
 
+    #if DEBUG
     private func skipDeveloper() {
         guard !busy else { return }
         busy = true
@@ -190,4 +258,5 @@ struct AuthView: View {
             busy = false
         }
     }
+    #endif
 }

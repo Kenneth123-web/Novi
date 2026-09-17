@@ -249,4 +249,33 @@ describe("admin", () => {
     const body = (await response.json()) as { total: number };
     expect(body.total).toBe(1);
   });
+
+  it("exposes a public captcha config", async () => {
+    const response = await run(new Request("https://console.test/api/captcha"));
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { provider: string; enabled: boolean };
+    expect(body.provider).toBe("turnstile");
+    expect(body.enabled).toBe(false);
+  });
+
+  it("requires a Turnstile token on admin login when siteverify is configured", async () => {
+    const ctx = createExecutionContext();
+    const response = await worker.fetch(
+      new Request("https://console.test/api/admin/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password: ADMIN }),
+      }),
+      {
+        ...env,
+        TURNSTILE_SITEKEY: "1x00000000000000000000AA",
+        TURNSTILE_SITEVERIFY_URL: "https://turnstile.test/siteverify",
+      },
+      ctx,
+    );
+    await waitOnExecutionContext(ctx);
+    expect(response.status).toBe(400);
+    const body = (await response.json()) as { error: { code: string } };
+    expect(body.error.code).toBe("CAPTCHA_REQUIRED");
+  });
 });
