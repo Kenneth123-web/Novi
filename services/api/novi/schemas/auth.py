@@ -4,7 +4,7 @@ import re
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import AliasChoices, BaseModel, EmailStr, Field, field_validator
 
 from novi.schemas.common import ORMModel
 
@@ -26,6 +26,12 @@ class RegisterRequest(BaseModel):
     username: str = Field(min_length=3, max_length=40)
     password: str
     display_name: str = Field(default="", max_length=80)
+    turnstile_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "turnstile_token", "cf-turnstile-response", "cf_turnstile_response"
+        ),
+    )
 
     @field_validator("username")
     @classmethod
@@ -43,6 +49,22 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+    turnstile_token: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "turnstile_token", "cf-turnstile-response", "cf_turnstile_response"
+        ),
+    )
+
+
+class CaptchaConfig(BaseModel):
+    """Public Turnstile settings. The secret never leaves the siteverify Worker."""
+
+    provider: str = "turnstile"
+    enabled: bool
+    sitekey: str
+    action: str = "turnstile-spin-v1"
+    widget_url: str = ""
 
 
 class RefreshRequest(BaseModel):

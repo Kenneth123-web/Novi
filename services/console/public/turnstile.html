@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+  <title>Novi CAPTCHA</title>
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    .wrap { display: flex; justify-content: center; align-items: center; min-height: 70px; }
+  </style>
+  <script>
+    window.onloadTurnstileCallback = function () {
+      const params = new URLSearchParams(location.search);
+      const sitekey = params.get("sitekey") || "";
+      const action = params.get("action") || "turnstile-spin-v1";
+      if (!sitekey || !window.turnstile) return;
+      window.turnstile.render("#widget", {
+        sitekey: sitekey,
+        action: action,
+        theme: "light",
+        size: "flexible",
+        callback: function (token) {
+          try { window.webkit.messageHandlers.turnstile.postMessage({ event: "success", token: token }); } catch (e) {}
+        },
+        "error-callback": function () {
+          try { window.webkit.messageHandlers.turnstile.postMessage({ event: "error" }); } catch (e) {}
+        },
+        "expired-callback": function () {
+          try { window.webkit.messageHandlers.turnstile.postMessage({ event: "expired" }); } catch (e) {}
+        },
+      });
+    };
+  </script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onloadTurnstileCallback" async defer></script>
+</head>
+<body>
+  <div class="wrap">
+    <div id="widget"></div>
+  </div>
+</body>
+</html>

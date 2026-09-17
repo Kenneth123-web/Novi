@@ -66,7 +66,9 @@ final class AppSession: ObservableObject {
             // A development shortcut. Failures are silent on purpose: a demo
             // account that no longer exists should land on the normal sign-in
             // screen, not on an error the real app would never show.
-            try? await signIn(email: credentials.email, password: credentials.password)
+            try? await signIn(
+                email: credentials.email, password: credentials.password, turnstileToken: ""
+            )
             if case .launching = phase { phase = .signedOut }
             return
         }
@@ -87,13 +89,19 @@ final class AppSession: ObservableObject {
 
     // MARK: Auth
 
-    func signUp(email: String, username: String, password: String, displayName: String)
-        async throws
-    {
+    func loadCaptchaConfig() async throws -> CaptchaConfigDTO {
+        try await api.send(.get, "auth/captcha")
+    }
+
+    func signUp(
+        email: String, username: String, password: String, displayName: String,
+        turnstileToken: String
+    ) async throws {
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/register",
             body: RegisterBody(
-                email: email, username: username, password: password, displayName: displayName
+                email: email, username: username, password: password,
+                displayName: displayName, turnstileToken: turnstileToken
             )
         )
         await api.store(response.tokens)
@@ -104,9 +112,10 @@ final class AppSession: ObservableObject {
         await api.prepareNetwork()
     }
 
-    func signIn(email: String, password: String) async throws {
+    func signIn(email: String, password: String, turnstileToken: String) async throws {
         let response: AuthResponseDTO = try await api.send(
-            .post, "auth/login", body: LoginBody(email: email, password: password)
+            .post, "auth/login",
+            body: LoginBody(email: email, password: password, turnstileToken: turnstileToken)
         )
         await api.store(response.tokens)
         await enter(response.user)

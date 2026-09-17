@@ -347,16 +347,26 @@ struct ConceptDetailDTO: Decodable {
 
 // MARK: - Request bodies
 
+struct CaptchaConfigDTO: Decodable {
+    let provider: String
+    let enabled: Bool
+    let sitekey: String
+    let action: String
+    let widgetUrl: String
+}
+
 struct RegisterBody: Encodable {
     let email: String
     let username: String
     let password: String
     let displayName: String
+    let turnstileToken: String
 }
 
 struct LoginBody: Encodable {
     let email: String
     let password: String
+    let turnstileToken: String
 }
 
 struct DevSkipBody: Encodable {

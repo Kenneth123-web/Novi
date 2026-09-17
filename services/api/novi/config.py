@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     # `secret` on POST /auth/dev-skip, in every environment.
     dev_skip_secret: str = ""
 
+    # Cloudflare Turnstile. The sitekey is public (iOS + console widget).
+    # Siteverify goes through the managed Worker; the secret never lives here.
+    # In development/test an empty URL accepts only Cloudflare's dummy token
+    # `XXXX.DUMMY.TOKEN`. Production refuses to boot without both values.
+    turnstile_sitekey: str = ""
+    turnstile_siteverify_url: str = ""
+    turnstile_widget_url: str = ""
+
     # ── Console (Cloudflare Worker that stores accounts + API usage) ─────────
     # Empty CONSOLE_BASE_URL disables ingest: local tests and a fresh clone
     # must not depend on Cloudflare being up. The origin secret is what the
@@ -149,6 +157,10 @@ class Settings(BaseSettings):
             problems.append(
                 "CONSOLE_ORIGIN_SECRET must be at least 32 characters when CONSOLE_BASE_URL is set"
             )
+        if not self.turnstile_sitekey.strip():
+            problems.append("TURNSTILE_SITEKEY must be set")
+        if not self.turnstile_siteverify_url.strip():
+            problems.append("TURNSTILE_SITEVERIFY_URL must be set")
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 

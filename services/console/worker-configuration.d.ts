@@ -7,6 +7,8 @@ interface __BaseEnv_Env {
 	API_BASE_URL: "";
 	ADMIN_PASSWORD: string;
 	CONSOLE_ORIGIN_SECRET: string;
+	TURNSTILE_SITEKEY: string;
+	TURNSTILE_SITEVERIFY_URL: string;
 }
 declare namespace Cloudflare {
 	interface GlobalProps {

@@ -16,7 +16,10 @@
     // Origin API the console calls when an admin disables a user.
     // Empty: D1 is still the ledger; login consults it. Postgres is
     // updated only when this is set to a reachable Novi API.
-    "API_BASE_URL": ""
+    "API_BASE_URL": "",
+    // Public Turnstile sitekey. The secret lives on turnstile-siteverify-novi.
+    "TURNSTILE_SITEKEY": "0x4AAAAAAE5j-PpNPgTtBBtz",
+    "TURNSTILE_SITEVERIFY_URL": "https://turnstile-siteverify-novi.rememberly-kenneth.workers.dev"
   },
 
   "d1_databases": [

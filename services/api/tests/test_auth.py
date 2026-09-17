@@ -11,7 +11,11 @@ async def test_register_and_login(client: AsyncClient, registration: dict) -> No
 
     r = await client.post(
         "/auth/login",
-        json={"email": registration["email"], "password": registration["password"]},
+        json={
+            "email": registration["email"],
+            "password": registration["password"],
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     assert r.status_code == 200
     assert r.json()["tokens"]["refresh_token"]
@@ -26,7 +30,11 @@ async def test_email_is_case_insensitive(client: AsyncClient, registration: dict
     await client.post("/auth/register", json=registration)
     r = await client.post(
         "/auth/login",
-        json={"email": registration["email"].upper(), "password": registration["password"]},
+        json={
+            "email": registration["email"].upper(),
+            "password": registration["password"],
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     assert r.status_code == 200
 
@@ -55,10 +63,20 @@ async def test_unknown_email_and_wrong_password_are_identical(
     """Sign-in must not become an account-enumeration oracle."""
     await client.post("/auth/register", json=registration)
     wrong = await client.post(
-        "/auth/login", json={"email": registration["email"], "password": "wrong-pass-9"}
+        "/auth/login",
+        json={
+            "email": registration["email"],
+            "password": "wrong-pass-9",
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     unknown = await client.post(
-        "/auth/login", json={"email": "nobody@example.com", "password": "wrong-pass-9"}
+        "/auth/login",
+        json={
+            "email": "nobody@example.com",
+            "password": "wrong-pass-9",
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     assert wrong.status_code == unknown.status_code == 401
     assert wrong.json()["error"] | {"request_id": ""} == unknown.json()["error"] | {

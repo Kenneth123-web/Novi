@@ -10,6 +10,8 @@ export default defineWorkersConfig({
             ADMIN_PASSWORD: "test-admin-password",
             CONSOLE_ORIGIN_SECRET: "test-origin-secret",
             API_BASE_URL: "",
+            TURNSTILE_SITEKEY: "",
+            TURNSTILE_SITEVERIFY_URL: "",
           },
         },
       },

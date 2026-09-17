@@ -44,3 +44,7 @@ services/console/.dev.vars
 services/console/node_modules/
 services/console/.wrangler/
 services/console/secrets.local.json
+
+services/turnstile-siteverify/node_modules/
+services/turnstile-siteverify/.wrangler/
+services/turnstile-siteverify/.dev.vars

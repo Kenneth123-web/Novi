@@ -1,10 +1,13 @@
 const app = document.getElementById("app");
 
+const captcha = { enabled: false, sitekey: "" };
+
 const state = {
   authed: false,
   view: "overview",
   error: "",
   busy: false,
+  turnstileToken: "",
   stats: null,
   users: [],
   usersTotal: 0,
@@ -62,11 +65,24 @@ function render() {
           <p>Accounts, logins, and API usage.</p>
           <label for="password">Password</label>
           <input id="password" name="password" type="password" autocomplete="current-password" autofocus />
+          ${captcha.enabled ? `<div id="turnstile-slot" class="turnstile"></div>` : ""}
           <button class="btn btn-primary" ${state.busy ? "disabled" : ""}>Sign in</button>
           <div class="note">${escapeHtml(state.error)}</div>
         </form>
       </div>`;
     document.getElementById("login").onsubmit = onLogin;
+    if (captcha.enabled && window.turnstile) {
+      const slot = document.getElementById("turnstile-slot");
+      if (slot) {
+        window.turnstile.render(slot, {
+          sitekey: captcha.sitekey,
+          action: "turnstile-spin-v1",
+          callback: (token) => { state.turnstileToken = token; },
+          "error-callback": () => { state.turnstileToken = ""; },
+          "expired-callback": () => { state.turnstileToken = ""; },
+        });
+      }
+    }
     return;
   }
 
@@ -297,7 +313,13 @@ async function onLogin(ev) {
   render();
   try {
     const password = ev.target.password.value;
-    await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password }) });
+    const token = state.turnstileToken
+      || ev.target.querySelector('[name="cf-turnstile-response"]')?.value
+      || "";
+    await api("/api/admin/login", {
+      method: "POST",
+      body: JSON.stringify({ password, turnstile_token: token }),
+    });
     state.authed = true;
     await show("overview");
   } catch (e) {
@@ -366,6 +388,11 @@ async function loadUsage() {
 }
 
 async function boot() {
+  try {
+    const cfg = await api("/api/captcha");
+    captcha.enabled = Boolean(cfg.enabled && cfg.sitekey);
+    captcha.sitekey = cfg.sitekey || "";
+  } catch { /* widget stays off; server still fail-closes when configured */ }
   try {
     await api("/api/admin/me");
     state.authed = true;

@@ -53,7 +53,11 @@ async def test_login_checks_console_status(
     )
     r = await client.post(
         "/auth/login",
-        json={"email": registration["email"], "password": registration["password"]},
+        json={
+            "email": registration["email"],
+            "password": registration["password"],
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     assert status.called
     assert r.status_code == 401
@@ -74,7 +78,11 @@ async def test_console_outage_does_not_block_login(
     )
     r = await client.post(
         "/auth/login",
-        json={"email": registration["email"], "password": registration["password"]},
+        json={
+            "email": registration["email"],
+            "password": registration["password"],
+            "turnstile_token": registration["turnstile_token"],
+        },
     )
     assert r.status_code == 200
 

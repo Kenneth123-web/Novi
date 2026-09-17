@@ -66,6 +66,7 @@ input:focus { outline: 2px solid var(--spark-soft); border-color: var(--spark); 
   height: 46px; padding: 0 18px; border-radius: 12px; border: 0;
   font-weight: 600;
 }
+.turnstile { margin: 16px 0 4px; min-height: 65px; }
 .btn-primary { background: var(--ink-900); color: #fff; width: 100%; margin-top: 16px; }
 .btn-primary:disabled { background: var(--ink-100); color: var(--ink-300); }
 .btn-quiet { background: transparent; color: var(--spark); height: 36px; padding: 0 8px; }
