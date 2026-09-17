@@ -1,3 +1,5 @@
+# ruff: noqa: UP007, UP035
+# Alembic's generated typing; 0001 silences the same rules.
 """weak subjects on the learning profile
 
 Revision ID: b7e4f1a90c2d
