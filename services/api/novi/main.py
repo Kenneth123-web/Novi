@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import Response
 
 from novi import __version__
 from novi.config import get_settings
@@ -17,6 +20,24 @@ from novi.routers import ask, auth, catalog, feed, health, internal, me, passpor
 from novi.schemas.common import ErrorEnvelope
 
 logger = get_logger(__name__)
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Browser-facing headers. iOS URLSession ignores them."""
+
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy", "camera=(), microphone=(), geolocation=()"
+        )
+        if get_settings().is_production:
+            response.headers.setdefault(
+                "Strict-Transport-Security", "max-age=63072000; includeSubDomains"
+            )
+        return response
 
 DESCRIPTION = """
 Novi — an AI social learning app.
@@ -75,14 +96,18 @@ def create_app() -> FastAPI:
         },
     )
 
+    wildcard = "*" in s.cors_origins
     app.add_middleware(
         CORSMiddleware,
         allow_origins=s.cors_origins,
-        allow_credentials=True,
+        # Credentials plus `*` would reflect any Origin. The iOS client does
+        # not use CORS; a browser hitting this API must not inherit that hole.
+        allow_credentials=not wildcard,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=["x-request-id"],
     )
+    app.add_middleware(SecurityHeadersMiddleware)
     # Outermost, so the request id already exists when an error handler builds
     # its response body.
     app.add_middleware(RequestContextMiddleware)

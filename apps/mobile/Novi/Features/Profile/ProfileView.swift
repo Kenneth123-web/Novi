@@ -6,7 +6,8 @@ struct ProfileView: View {
     @EnvironmentObject private var session: AppSession
     @State private var saved: [ContentDTO] = []
     @State private var history: [HistoryDayDTO] = []
-    @State private var editingInterests = false
+    @State private var gradeMap: GradeCurriculumDTO?
+    @State private var editingProfile = false
     @State private var path = NavigationPath()
     @StateObject private var chrome = Chrome()
 
@@ -31,7 +32,11 @@ struct ProfileView: View {
             .navigationDestination(for: ContentDTO.self) { content in
                 ContentDetailView(contentID: content.id, chrome: chrome, onAsk: { _ in })
             }
-            .sheet(isPresented: $editingInterests) { InterestEditor() }
+            .sheet(isPresented: $editingProfile, onDismiss: {
+                Task { await load() }
+            }) {
+                LearningProfileEditor()
+            }
             .task { await load() }
         }
     }
@@ -105,36 +110,67 @@ struct ProfileView: View {
     private var interests: some View {
         VStack(alignment: .leading, spacing: NV.Space.m) {
             NVSectionHeader(
-                title: "Customise my feed",
-                subtitle: "What you pick here is what you see",
-                action: ("Edit", { editingInterests = true })
+                title: "Learning customization",
+                subtitle: "Courses, priorities and goals",
+                action: ("Edit", { editingProfile = true })
             )
-            if let profile = session.profile, !profile.subjectOrder.isEmpty {
+            if let profile = session.profile {
+                if !profile.currentCourses.isEmpty {
+                    Text("CURRENT COURSES")
+                        .font(NV.caption)
+                        .foregroundStyle(NV.inkTertiary)
+                    VStack(spacing: NV.Space.s) {
+                        ForEach(profile.currentCourses, id: \.courseSlug) { selection in
+                            let course = gradeMap?.courses.first {
+                                $0.slug == selection.courseSlug
+                            }
+                            HStack(spacing: NV.Space.m) {
+                                Image(systemName: course?.icon ?? "book")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(NV.spark)
+                                    .frame(width: 32, height: 32)
+                                    .background(NV.sparkSoft)
+                                    .clipShape(Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(
+                                        selection.name.isEmpty
+                                            ? course?.name ?? "Current course"
+                                            : selection.name
+                                    )
+                                    .font(NV.smallStrong).foregroundStyle(NV.ink)
+                                    Text(course?.subjectName ?? selection.courseSlug)
+                                        .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(NV.Space.m)
+                            .edgedSurface()
+                        }
+                    }
+                }
+
                 if !profile.weakSubjects.isEmpty {
-                    Text("Stuck on")
+                    Text("FOCUS")
                         .font(NV.caption)
                         .foregroundStyle(NV.inkTertiary)
                     FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                         ForEach(profile.weakSubjects, id: \.self) { slug in
                             let name = session.subjects.first { $0.slug == slug }?.name ?? slug
-                            NVTag(text: name, tint: NV.spark)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(name).font(NV.smallStrong)
+                                Text(Onb.focusGoalLabel(profile.focusGoals[slug]))
+                                    .font(NV.caption)
+                                    .foregroundStyle(NV.inkTertiary)
+                            }
+                            .foregroundStyle(NV.ink)
+                            .padding(.horizontal, NV.Space.m)
+                            .padding(.vertical, 9)
+                            .background(NV.sparkSoft)
+                            .clipShape(RoundedRectangle(
+                                cornerRadius: NV.Radius.control,
+                                style: .continuous
+                            ))
                         }
-                    }
-                }
-                FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                    ForEach(profile.subjectOrder, id: \.self) { slug in
-                        let name = session.subjects.first { $0.slug == slug }?.name ?? slug
-                        let weight = profile.subjectInterests[slug] ?? 0
-                        HStack(spacing: 5) {
-                            Text(name).font(NV.small.weight(.medium))
-                            Text("\(Int(weight * 100))")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(NV.spark)
-                        }
-                        .foregroundStyle(NV.ink)
-                        .padding(.horizontal, NV.Space.m)
-                        .padding(.vertical, 9)
-                        .cardSurface(NV.Radius.pill)
                     }
                 }
             }
@@ -176,6 +212,9 @@ struct ProfileView: View {
     private func load() async {
         await session.loadSubjects()
         try? await session.loadMe()
+        if let stage = session.profile?.stage, let grade = session.profile?.grade {
+            gradeMap = try? await session.gradeCurriculum(stage: stage, grade: grade)
+        }
         saved = (try? await session.api.authed(.get, "saved", as: [ContentDTO].self)) ?? []
         history = (try? await session.api.authed(
             .get, "me/history", query: ["days": "14"], as: [HistoryDayDTO].self
@@ -183,85 +222,48 @@ struct ProfileView: View {
     }
 }
 
-/// Re-picking the personalisation the feed is built from.
+/// One editor for the facts that drive both recommendations and the Passport.
 ///
-/// Existing interest weights survive: a subject the learner has actually
-/// engaged with should not be reset to its questionnaire default just because
-/// they opened this sheet.
-private struct InterestEditor: View {
+/// It writes concrete course selections back to the profile. The Passport does
+/// not keep a copy; its next load is derived from these same values.
+struct LearningProfileEditor: View {
     @EnvironmentObject private var session: AppSession
     @Environment(\.dismiss) private var dismiss
     @State private var stage: String = "high"
     @State private var grade: String = "11"
     @State private var curriculum: String?
-    @State private var selected: [String] = []
-    @State private var weak: [String] = []
+    @State private var gradeMap: GradeCurriculumDTO?
+    @State private var selectedCourses: [String] = []
+    @State private var courseNames: [String: String] = [:]
+    @State private var focusSubjects: [String] = []
+    @State private var focusGoals: [String: String] = [:]
+    @State private var focusAreas: [String: [String]] = [:]
+    @State private var loading = false
     @State private var busy = false
+    @State private var error: APIError?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: NV.Space.xl) {
-                    VStack(alignment: .leading, spacing: NV.Space.s) {
-                        Text("SCHOOL")
-                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
-                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                            ForEach(Onb.stages) { option in
-                                NVChip(text: option.label, selected: stage == option.slug) {
-                                    stage = option.slug
-                                    if !Onb.grades(for: option.slug).contains(where: { $0.slug == grade }) {
-                                        grade = Onb.grades(for: option.slug).first?.slug ?? grade
-                                    }
-                                }
-                            }
+                    schoolSection
+
+                    if loading {
+                        HStack(spacing: NV.Space.s) {
+                            ProgressView().controlSize(.small)
+                            Text("Loading course map…")
+                                .font(NV.small).foregroundStyle(NV.inkTertiary)
                         }
-                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                            ForEach(Onb.grades(for: stage)) { option in
-                                NVChip(text: option.label, selected: grade == option.slug) {
-                                    grade = option.slug
-                                }
-                            }
-                        }
+                    } else if let gradeMap {
+                        courseSection(gradeMap)
+                        focusSection(gradeMap)
+                        areaSection(gradeMap)
                     }
 
-                    VStack(alignment: .leading, spacing: NV.Space.s) {
-                        Text("SUBJECTS · TAP ORDER IS PRIORITY")
-                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
-                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                            ForEach(session.subjects) { subject in
-                                let rank = selected.firstIndex(of: subject.slug)
-                                NVChip(
-                                    text: rank == nil ? subject.name : "\(rank! + 1). \(subject.name)",
-                                    selected: rank != nil
-                                ) {
-                                    if let rank {
-                                        selected.remove(at: rank)
-                                        weak.removeAll { $0 == subject.slug }
-                                    } else {
-                                        selected.append(subject.slug)
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    VStack(alignment: .leading, spacing: NV.Space.s) {
-                        Text("WHERE YOU ARE STUCK")
-                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
-                        FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
-                            ForEach(session.subjects.filter { selected.contains($0.slug) }) { subject in
-                                NVChip(
-                                    text: subject.name,
-                                    selected: weak.contains(subject.slug)
-                                ) {
-                                    if let idx = weak.firstIndex(of: subject.slug) {
-                                        weak.remove(at: idx)
-                                    } else {
-                                        weak.append(subject.slug)
-                                    }
-                                }
-                            }
-                        }
+                    if let error {
+                        NVErrorNote(message: error.message, retry: {
+                            Task { await loadCurriculum() }
+                        })
                     }
                 }
                 .padding(NV.Space.l)
@@ -273,35 +275,371 @@ private struct InterestEditor: View {
                 ToolbarItem(placement: .topBarLeading) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Save") { save() }
-                        .disabled(selected.isEmpty || weak.isEmpty || busy)
+                        .disabled(!canSave)
                         .fontWeight(.semibold)
                 }
             }
             .task {
-                let profile = session.profile
-                stage = profile?.stage ?? "high"
-                grade = profile?.grade ?? Onb.grades(for: stage).first?.slug ?? "11"
-                curriculum = profile?.curriculum
-                selected = profile?.subjectOrder ?? []
-                weak = profile?.weakSubjects ?? []
+                hydrate()
+                await loadCurriculum()
             }
         }
     }
 
-    private func save() {
-        busy = true
-        Task {
-            try? await session.updateProfile(
-                ProfilePatchBody(
-                    stage: stage,
-                    grade: grade,
-                    curriculum: curriculum,
-                    subjectSlugs: selected,
-                    weakSubjectSlugs: weak
-                )
+    private var canSave: Bool {
+        !selectedCourses.isEmpty
+            && !focusSubjects.isEmpty
+            && focusSubjects.allSatisfy { focusGoals[$0] != nil }
+            && gradeMap != nil
+            && !loading
+            && !busy
+    }
+
+    private var schoolSection: some View {
+        VStack(alignment: .leading, spacing: NV.Space.s) {
+            Text("SCHOOL & GRADE")
+                .font(NV.caption).foregroundStyle(NV.inkTertiary)
+            FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                ForEach(Onb.stages) { option in
+                    NVChip(text: option.label, selected: stage == option.slug) {
+                        guard stage != option.slug else { return }
+                        stage = option.slug
+                        grade = Onb.grades(for: stage).first?.slug ?? ""
+                        resetLearningSelections()
+                        Task { await loadCurriculum() }
+                    }
+                }
+            }
+            FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                ForEach(Onb.grades(for: stage)) { option in
+                    NVChip(text: option.label, selected: grade == option.slug) {
+                        guard grade != option.slug else { return }
+                        grade = option.slug
+                        resetLearningSelections()
+                        Task { await loadCurriculum() }
+                    }
+                }
+            }
+            Text("CURRICULUM · OPTIONAL")
+                .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                .padding(.top, NV.Space.s)
+            FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                ForEach(Onb.curricula) { option in
+                    NVChip(text: option.label, selected: curriculum == option.slug) {
+                        curriculum = curriculum == option.slug ? nil : option.slug
+                    }
+                }
+            }
+        }
+    }
+
+    private func courseSection(_ map: GradeCurriculumDTO) -> some View {
+        VStack(alignment: .leading, spacing: NV.Space.s) {
+            NVSectionHeader(
+                title: "Current courses",
+                subtitle: "\(map.gradeLabel) · \(map.ageRange)"
             )
-            busy = false
-            dismiss()
+            Text("Pick the classes you take now. Add the exact local title when it differs.")
+                .font(NV.small).foregroundStyle(NV.inkTertiary)
+            ForEach(map.courses) { course in
+                editorCourseCard(course)
+            }
+        }
+    }
+
+    private func focusSection(_ map: GradeCurriculumDTO) -> some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(
+                title: "Focus subjects",
+                subtitle: "Each one needs a goal"
+            )
+            FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                ForEach(map.courses) { course in
+                    NVChip(
+                        text: course.subjectName,
+                        icon: course.icon,
+                        selected: focusSubjects.contains(course.subjectSlug)
+                    ) {
+                        if let index = focusSubjects.firstIndex(of: course.subjectSlug) {
+                            focusSubjects.remove(at: index)
+                            focusGoals[course.subjectSlug] = nil
+                            pruneEditorAreas()
+                        } else {
+                            focusSubjects.append(course.subjectSlug)
+                        }
+                    }
+                }
+            }
+
+            ForEach(focusSubjects, id: \.self) { subjectSlug in
+                let course = map.courses.first { $0.subjectSlug == subjectSlug }
+                focusGoalRow(
+                    subjectSlug: subjectSlug,
+                    subjectName: course?.subjectName ?? subjectSlug
+                )
+            }
+        }
+    }
+
+    private func areaSection(_ map: GradeCurriculumDTO) -> some View {
+        let subjects = editorAreaSubjects(map)
+        return VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(
+                title: "Inside those subjects",
+                subtitle: "Biology is not one thing"
+            )
+            Text("Pick the chapters Novi should actually feed you.")
+                .font(NV.small).foregroundStyle(NV.inkTertiary)
+            ForEach(subjects, id: \.subjectSlug) { course in
+                VStack(alignment: .leading, spacing: NV.Space.s) {
+                    Text(course.subjectName.uppercased())
+                        .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                    FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
+                        ForEach(Onb.areas(for: course.subjectSlug)) { option in
+                            let selected = (focusAreas[course.subjectSlug] ?? [])
+                                .contains(option.slug)
+                            NVChip(text: option.label, selected: selected) {
+                                toggleEditorArea(subject: course.subjectSlug, area: option.slug)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func editorCourseCard(_ course: CurriculumCourseDTO) -> some View {
+        let selected = selectedCourses.contains(course.slug)
+        return VStack(alignment: .leading, spacing: NV.Space.s) {
+            Button {
+                if let index = selectedCourses.firstIndex(of: course.slug) {
+                    selectedCourses.remove(at: index)
+                    courseNames[course.slug] = nil
+                    pruneEditorAreas()
+                } else {
+                    selectedCourses.append(course.slug)
+                }
+            } label: {
+                HStack(alignment: .top, spacing: NV.Space.m) {
+                    Image(systemName: course.icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(selected ? NV.spark : NV.inkTertiary)
+                        .frame(width: 32, height: 32)
+                        .background(selected ? NV.sparkSoft : NV.surfaceSoft)
+                        .clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(course.subjectName)
+                            .font(NV.caption).foregroundStyle(NV.inkTertiary)
+                        Text(course.name)
+                            .font(NV.smallStrong).foregroundStyle(NV.ink)
+                            .multilineTextAlignment(.leading)
+                    }
+                    Spacer(minLength: 0)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(selected ? NV.spark : NV.track)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if selected {
+                TextField(
+                    "Exact class name (optional)",
+                    text: Binding(
+                        get: { courseNames[course.slug] ?? "" },
+                        set: { courseNames[course.slug] = $0 }
+                    )
+                )
+                .font(NV.small)
+                .padding(.horizontal, NV.Space.m)
+                .frame(height: 40)
+                .background(NV.surface)
+                .clipShape(RoundedRectangle(cornerRadius: NV.Radius.control))
+                .overlay {
+                    RoundedRectangle(cornerRadius: NV.Radius.control)
+                        .strokeBorder(NV.hairline, lineWidth: 1)
+                }
+            }
+        }
+        .padding(NV.Space.m)
+        .background(
+            selected ? NV.sparkSoft.opacity(0.55) : NV.surface,
+            in: RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous)
+                .strokeBorder(selected ? NV.spark.opacity(0.3) : NV.hairline, lineWidth: 1)
+        }
+    }
+
+    private func focusGoalRow(subjectSlug: String, subjectName: String) -> some View {
+        let goal = focusGoals[subjectSlug]
+        return Menu {
+            ForEach(Onb.focusGoals) { option in
+                Button {
+                    focusGoals[subjectSlug] = option.slug
+                } label: {
+                    Label(
+                        option.label,
+                        systemImage: goal == option.slug ? "checkmark" : "circle"
+                    )
+                }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(subjectName)
+                        .font(NV.smallStrong).foregroundStyle(NV.ink)
+                    Text(Onb.focusGoalLabel(goal))
+                        .font(NV.caption)
+                        .foregroundStyle(goal == nil ? NV.spark : NV.inkTertiary)
+                }
+                Spacer()
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(NV.inkTertiary)
+            }
+            .padding(NV.Space.m)
+            .edgedSurface()
+        }
+    }
+
+    private func editorAreaSubjects(_ map: GradeCurriculumDTO?) -> [CurriculumCourseDTO] {
+        guard let map else { return [] }
+        var seen = Set<String>()
+        var out: [CurriculumCourseDTO] = []
+        for slug in selectedCourses {
+            guard let course = map.courses.first(where: { $0.slug == slug }) else { continue }
+            if seen.insert(course.subjectSlug).inserted {
+                out.append(course)
+            }
+        }
+        for subject in focusSubjects where seen.insert(subject).inserted {
+            if let course = map.courses.first(where: { $0.subjectSlug == subject }) {
+                out.append(course)
+            }
+        }
+        return out.filter { !Onb.areas(for: $0.subjectSlug).isEmpty }
+    }
+
+    private func toggleEditorArea(subject: String, area: String) {
+        var current = focusAreas[subject] ?? []
+        if let index = current.firstIndex(of: area) {
+            current.remove(at: index)
+        } else {
+            current.append(area)
+        }
+        if current.isEmpty {
+            focusAreas[subject] = nil
+        } else {
+            focusAreas[subject] = current
+        }
+    }
+
+    private func pruneEditorAreas() {
+        let keep = Set(editorAreaSubjects(gradeMap).map(\.subjectSlug))
+        focusAreas = focusAreas.filter { keep.contains($0.key) }
+    }
+
+    private var submittedEditorAreas: [String: [String]] {
+        Dictionary(uniqueKeysWithValues: editorAreaSubjects(gradeMap).compactMap { course in
+            let picked = focusAreas[course.subjectSlug] ?? []
+            return picked.isEmpty ? nil : (course.subjectSlug, picked)
+        })
+    }
+
+    private func hydrate() {
+        let profile = session.profile
+        stage = profile?.stage ?? "high"
+        grade = profile?.grade ?? Onb.grades(for: stage).first?.slug ?? "11"
+        curriculum = profile?.curriculum
+        selectedCourses = []
+        courseNames = [:]
+        for selection in profile?.currentCourses ?? []
+        where !selectedCourses.contains(selection.courseSlug) {
+            selectedCourses.append(selection.courseSlug)
+            courseNames[selection.courseSlug] = selection.name
+        }
+        focusSubjects = []
+        for subject in profile?.weakSubjects ?? []
+        where !focusSubjects.contains(subject) {
+            focusSubjects.append(subject)
+        }
+        focusGoals = profile?.focusGoals ?? [:]
+        focusAreas = profile?.focusAreas ?? [:]
+    }
+
+    private func resetLearningSelections() {
+        gradeMap = nil
+        selectedCourses = []
+        courseNames = [:]
+        focusSubjects = []
+        focusGoals = [:]
+        focusAreas = [:]
+        error = nil
+    }
+
+    private func loadCurriculum() async {
+        let requestedStage = stage
+        let requestedGrade = grade
+        guard !requestedGrade.isEmpty else { return }
+        loading = true
+        defer { loading = false }
+        do {
+            let map: GradeCurriculumDTO = try await session.gradeCurriculum(
+                stage: requestedStage, grade: requestedGrade
+            )
+            guard stage == requestedStage, grade == requestedGrade else { return }
+            gradeMap = map
+            let validCourses = Set(map.courses.map(\.slug))
+            let validSubjects = Set(map.courses.map(\.subjectSlug))
+            selectedCourses = selectedCourses.filter(validCourses.contains)
+            courseNames = courseNames.filter { validCourses.contains($0.key) }
+            focusSubjects = focusSubjects.filter(validSubjects.contains)
+            focusGoals = focusGoals.filter { validSubjects.contains($0.key) }
+            focusAreas = focusAreas.filter { validSubjects.contains($0.key) }
+            error = nil
+        } catch let apiError as APIError {
+            gradeMap = nil
+            error = apiError
+        } catch {
+            gradeMap = nil
+            self.error = APIError.transport(error)
+        }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        busy = true
+        error = nil
+        Task {
+            do {
+                try await session.updateProfile(
+                    LearningProfilePatchBody(
+                        stage: stage,
+                        grade: grade,
+                        curriculum: curriculum,
+                        currentCourses: selectedCourses.map { slug in
+                            CurrentCourseSelectionDTO(
+                                courseSlug: slug,
+                                name: courseNames[slug, default: ""]
+                                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                        },
+                        focusSubjectSlugs: focusSubjects,
+                        focusGoals: focusGoals,
+                        focusAreas: submittedEditorAreas
+                    )
+                )
+                busy = false
+                dismiss()
+            } catch let apiError as APIError {
+                error = apiError
+                busy = false
+            } catch {
+                self.error = APIError.transport(error)
+                busy = false
+            }
         }
     }
 }

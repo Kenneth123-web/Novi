@@ -14,10 +14,11 @@ import Foundation
 actor APIClient {
     struct Config {
         var baseURL: URL
-        // Longer than the server's AI timeout, so the server's structured
-        // error arrives instead of this client giving up first and reporting a
-        // generic "can't reach the server" for what is really a model outage.
+        // Ceiling for Ask/quiz only. Auth used to inherit this 150s session
+        // timer: URLSession ignores URLRequest.timeoutInterval, so Skip sat
+        // on a dead API until the AI timeout fired.
         var timeout: TimeInterval = 150
+        var shortTimeout: TimeInterval = 12
 
         /// Simulator → loopback. Device → Wi-Fi, USB and Bonjour URLs from
         /// Info.plist, probed in order. `-apiBaseURL` still wins when a launch
@@ -32,8 +33,9 @@ actor APIClient {
             var urls: [URL] = []
             #if targetEnvironment(simulator)
             urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
+            urls.append(URL(string: "http://localhost:8000/v1")!)
             #else
-            for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL"] {
+            for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL", "NOVAPITunnelURL"] {
                 if let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String {
                     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                     if let url = URL(string: trimmed), !trimmed.isEmpty {
@@ -53,9 +55,11 @@ actor APIClient {
 
     private var baseURL: URL
     private let longTimeout: TimeInterval
+    private let shortTimeout: TimeInterval
     private let candidates: [URL]
     private var resolved = false
-    private let session: URLSession
+    private let shortSession: URLSession
+    private let longSession: URLSession
     private let tokens: TokenStore
     private var refreshTask: Task<TokenStore.Stored, Error>?
     private var onAuthenticationLost: (@Sendable () -> Void)?
@@ -63,22 +67,28 @@ actor APIClient {
     init(config: Config = .default, tokens: TokenStore = TokenStore()) {
         self.baseURL = config.baseURL
         self.longTimeout = config.timeout
+        self.shortTimeout = config.shortTimeout
         self.candidates = config.candidates.isEmpty ? [config.baseURL] : config.candidates
         self.tokens = tokens
+        // Two sessions. URLSession uses the *configuration* timer, not
+        // URLRequest.timeoutInterval, so a single 150s session made every
+        // failed Skip wait out the AI ceiling.
+        self.shortSession = Self.makeSession(timeout: config.shortTimeout)
+        self.longSession = Self.makeSession(timeout: config.timeout)
+    }
+
+    private static func makeSession(timeout: TimeInterval) -> URLSession {
         let cfg = URLSessionConfiguration.ephemeral
-        // Ceiling for Ask/quiz. Auth and the rest set a much shorter
-        // timeout on the request itself — 150s of spinner on skip-login
-        // is how "can't reach the server" presented on a device.
-        cfg.timeoutIntervalForRequest = config.timeout
-        cfg.timeoutIntervalForResource = config.timeout
+        cfg.timeoutIntervalForRequest = timeout
+        cfg.timeoutIntervalForResource = timeout
         cfg.waitsForConnectivity = false
-        self.session = URLSession(configuration: cfg)
+        return URLSession(configuration: cfg)
     }
 
     /// Hits `/health` so iOS shows the local-network prompt on the sign-in
     /// screen, and so a device build can pick Wi-Fi vs USB vs Bonjour.
     func prepareNetwork() async {
-        await resolveBaseURL()
+        _ = try? await resolveBaseURL()
     }
 
     func setAuthenticationLostHandler(_ handler: @escaping @Sendable () -> Void) {
@@ -95,9 +105,9 @@ actor APIClient {
         query: [String: String] = [:],
         as: Response.Type = Response.self
     ) async throws -> Response {
-        await resolveBaseURL()
+        try await resolveBaseURL()
         let request = try makeRequest(method, path, body: body, query: query, token: nil)
-        let (data, status) = try await perform(request)
+        let (data, status) = try await perform(request, path: path)
         guard (200..<300).contains(status) else {
             throw APIError.decode(from: data, status: status)
         }
@@ -113,17 +123,17 @@ actor APIClient {
         query: [String: String] = [:],
         as: Response.Type = Response.self
     ) async throws -> Response {
-        await resolveBaseURL()
+        try await resolveBaseURL()
         var stored = try await validTokensAsync()
         var request = try makeRequest(method, path, body: body, query: query,
                                       token: stored.accessToken)
-        var (data, status) = try await perform(request)
+        var (data, status) = try await perform(request, path: path)
 
         if status == 401 {
             stored = try await refreshTokens(force: true)
             request = try makeRequest(method, path, body: body, query: query,
                                       token: stored.accessToken)
-            (data, status) = try await perform(request)
+            (data, status) = try await perform(request, path: path)
         }
 
         guard (200..<300).contains(status) else {
@@ -182,13 +192,21 @@ actor APIClient {
         let stored = try validTokens()
         if !force, stored.isAccessValid { return stored }
 
-        let task = Task<TokenStore.Stored, Error> { [baseURL, session] in
-            var request = URLRequest(url: baseURL.appendingPathComponent("auth/refresh"))
+        // Run off this actor: `send` would re-enter it while we wait on
+        // `refreshTask`, and a second authed call would deadlock.
+        let session = shortSession
+        let url = baseURL.appending(path: "auth/refresh")
+        let timeout = shortTimeout
+        let refreshToken = stored.refreshToken
+        let task = Task<TokenStore.Stored, Error> {
+            var request = URLRequest(url: url)
             request.httpMethod = "POST"
-            request.timeoutInterval = 12
+            request.timeoutInterval = timeout
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(["refresh_token": stored.refreshToken])
-            let (data, response) = try await session.data(for: request)
+            request.httpBody = try JSONEncoder().encode(["refresh_token": refreshToken])
+            let (data, response) = try await Self.timedData(
+                using: session, for: request, timeout: timeout
+            )
             let status = (response as? HTTPURLResponse)?.statusCode ?? 0
             guard (200..<300).contains(status) else {
                 throw APIError.decode(from: data, status: status)
@@ -225,14 +243,14 @@ actor APIClient {
         token: String?
     ) throws -> URLRequest {
         var components = URLComponents(
-            url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false
+            url: baseURL.appending(path: path), resolvingAgainstBaseURL: false
         )!
         if !query.isEmpty {
             components.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
         }
         var request = URLRequest(url: components.url!)
         request.httpMethod = method.rawValue
-        request.timeoutInterval = isLongRunning(path) ? longTimeout : 12
+        request.timeoutInterval = isLongRunning(path) ? longTimeout : shortTimeout
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -244,12 +262,38 @@ actor APIClient {
         return request
     }
 
-    private func perform(_ request: URLRequest) async throws -> (Data, Int) {
+    private func perform(_ request: URLRequest, path: String) async throws -> (Data, Int) {
+        let longRunning = isLongRunning(path)
+        let timeout = longRunning ? longTimeout : shortTimeout
+        let session = longRunning ? longSession : shortSession
         do {
-            let (data, response) = try await session.data(for: request)
+            let (data, response) = try await Self.timedData(
+                using: session, for: request, timeout: timeout
+            )
             return (data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         } catch {
-            throw APIError.transport(error, reaching: request.url)
+            if !longRunning { resolved = false }
+            throw APIError.transport(error, reaching: request.url, longRunning: longRunning)
+        }
+    }
+
+    /// URLSession's own timers start after the socket is up. A closed or
+    /// black-holed port can sit in SYN-retry well past `timeoutIntervalForRequest`,
+    /// which is how Skip as developer showed "took too long to answer".
+    nonisolated private static func timedData(
+        using session: URLSession, for request: URLRequest, timeout: TimeInterval
+    ) async throws -> (Data, URLResponse) {
+        try await withThrowingTaskGroup(of: (Data, URLResponse).self) { group in
+            group.addTask { try await session.data(for: request) }
+            group.addTask {
+                try await Task.sleep(for: .seconds(timeout))
+                throw URLError(.timedOut)
+            }
+            guard let first = try await group.next() else {
+                throw URLError(.timedOut)
+            }
+            group.cancelAll()
+            return first
         }
     }
 
@@ -258,30 +302,53 @@ actor APIClient {
             || path.hasSuffix("/summarize") || path.hasSuffix("/translate")
     }
 
-    private func resolveBaseURL() async {
+    private func resolveBaseURL() async throws {
         if resolved { return }
-        for url in candidates {
-            if await ping(url) {
-                baseURL = url
-                resolved = true
-                return
+        if let url = await firstReachable() {
+            baseURL = url
+            resolved = true
+            return
+        }
+        throw APIError.transport(
+            URLError(.cannotConnectToHost),
+            reaching: candidates.first ?? baseURL
+        )
+    }
+
+    /// Probe every candidate together. Sequential pings used to spend 4s on a
+    /// dead LAN IP before even trying USB, Bonjour or the HTTPS tunnel, which
+    /// is how a leftover content filter made Skip look like a timeout.
+    private func firstReachable() async -> URL? {
+        let session = shortSession
+        let urls = candidates
+        return await withTaskGroup(of: (Int, URL)?.self) { group in
+            for (index, url) in urls.enumerated() {
+                group.addTask {
+                    await Self.ping(url, session: session) ? (index, url) : nil
+                }
             }
+            var winner: (Int, URL)?
+            for await result in group {
+                guard let result else { continue }
+                if winner == nil || result.0 < winner!.0 { winner = result }
+                if result.0 == 0 {
+                    group.cancelAll()
+                    return result.1
+                }
+            }
+            return winner?.1
         }
     }
 
-    private func ping(_ base: URL) async -> Bool {
-        var request = URLRequest(url: base.appendingPathComponent("health"))
+    nonisolated private static func ping(_ base: URL, session: URLSession) async -> Bool {
+        var request = URLRequest(url: base.appending(path: "health"))
         request.httpMethod = "GET"
-        request.timeoutInterval = 2
+        request.timeoutInterval = 4
         request.setValue("application/json", forHTTPHeaderField: "Accept")
-        let cfg = URLSessionConfiguration.ephemeral
-        cfg.timeoutIntervalForRequest = 2
-        cfg.timeoutIntervalForResource = 2
-        cfg.waitsForConnectivity = false
-        let probe = URLSession(configuration: cfg)
-        defer { probe.finishTasksAndInvalidate() }
         do {
-            let (data, response) = try await probe.data(for: request)
+            let (data, response) = try await timedData(
+                using: session, for: request, timeout: 4
+            )
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
                 return false

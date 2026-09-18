@@ -8,6 +8,7 @@ import uuid
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from novi.core.lang import content_matches_language, language_clause
 from novi.models import (
     Concept,
     Content,
@@ -77,14 +78,38 @@ def to_out(content: Content, concepts: list[ConceptRef] | None = None) -> Conten
     return out
 
 
+def _in_language(stmt, language: str | None):
+    if not language:
+        return stmt
+    return stmt.where(language_clause(Content.language, language))
+
+
+def _keep_language(
+    rows: list[Content], language: str | None, *, limit: int | None = None
+) -> list[Content]:
+    if not language:
+        return rows[:limit] if limit is not None else rows
+    kept = [
+        row
+        for row in rows
+        if content_matches_language(row.language, row.title, row.description, language)
+    ]
+    return kept[:limit] if limit is not None else kept
+
+
 async def related(
-    db: AsyncSession, content: Content, *, limit: int = 8
+    db: AsyncSession,
+    content: Content,
+    *,
+    limit: int = 8,
+    language: str | None = None,
 ) -> list[Content]:
     """Other items covering the same concepts.
 
     Ranked by how many concepts they share, then by quality — a card that
     covers two of the same ideas is more related than one that covers one.
     """
+    fetch = limit * 3 if language else limit
     concept_ids = (
         await db.execute(
             select(ContentConcept.concept_id).where(ContentConcept.content_id == content.id)
@@ -93,37 +118,48 @@ async def related(
 
     if concept_ids:
         overlap = func.count(ContentConcept.concept_id).label("overlap")
+        stmt = (
+            select(Content, overlap)
+            .join(ContentConcept, ContentConcept.content_id == Content.id)
+            .where(
+                ContentConcept.concept_id.in_(concept_ids),
+                Content.id != content.id,
+            )
+        )
+        stmt = _in_language(stmt, language)
         rows = (
             await db.execute(
-                select(Content, overlap)
-                .join(ContentConcept, ContentConcept.content_id == Content.id)
-                .where(
-                    ContentConcept.concept_id.in_(concept_ids),
-                    Content.id != content.id,
-                )
-                .group_by(Content.id)
+                stmt.group_by(Content.id)
                 .order_by(overlap.desc(), Content.quality.desc())
-                .limit(limit)
+                .limit(fetch)
             )
         ).all()
-        if rows:
-            return [r[0] for r in rows]
+        related_rows = _keep_language([r[0] for r in rows], language, limit=limit)
+        if related_rows:
+            return related_rows
 
     # Nothing tagged yet: fall back to the same subject.
-    return list(
+    fallback_stmt = select(Content).where(
+        Content.subject_id == content.subject_id, Content.id != content.id
+    )
+    fallback_stmt = _in_language(fallback_stmt, language)
+    fallback = list(
         (
             await db.execute(
-                select(Content)
-                .where(Content.subject_id == content.subject_id, Content.id != content.id)
-                .order_by(Content.quality.desc())
-                .limit(limit)
+                fallback_stmt.order_by(Content.quality.desc()).limit(fetch)
             )
         ).scalars()
     )
+    return _keep_language(fallback, language, limit=limit)
 
 
 async def search(
-    db: AsyncSession, *, query: str, limit: int = 20, media_kind: str | None = None
+    db: AsyncSession,
+    *,
+    query: str,
+    limit: int = 20,
+    media_kind: str | None = None,
+    language: str | None = None,
 ) -> list[Content]:
     """Full-text search, widening from precision to recall.
 
@@ -137,15 +173,17 @@ async def search(
     3. Substring match on the individual words, for a query the parser and the
        stemmer both miss.
 
-    `simple` rather than `english` is deliberate: the store is mixed Chinese
-    and English, and the English stemmer mangles the Chinese titles without
-    helping them.
+    `simple` rather than `english` is deliberate: Chinese tokens must stay
+    searchable for zh profiles, and the English stemmer would mangle them.
+    Language filtering happens after retrieval so a mis-tagged card cannot
+    leak into an English-only feed.
     """
     cleaned = query.strip()
     if not cleaned:
         return []
 
     words = [w for w in re.split(r"\W+", cleaned) if len(w) > 1]
+    fetch = limit * 3 if language else limit
 
     async def by_tsquery(expression: str) -> list[Content]:
         tsquery = func.websearch_to_tsquery("simple", expression)
@@ -153,11 +191,13 @@ async def search(
             select(Content)
             .where(Content.search_vector.op("@@")(tsquery))
             .order_by(func.ts_rank(Content.search_vector, tsquery).desc(), Content.quality.desc())
-            .limit(limit)
+            .limit(fetch)
         )
         if media_kind:
             stmt = stmt.where(Content.media_kind == media_kind)
-        return list((await db.execute(stmt)).scalars())
+        stmt = _in_language(stmt, language)
+        rows = list((await db.execute(stmt)).scalars())
+        return _keep_language(rows, language, limit=limit)
 
     if rows := await by_tsquery(cleaned):
         return rows
@@ -176,8 +216,9 @@ async def search(
             )
         )
         .order_by(Content.quality.desc())
-        .limit(limit)
+        .limit(fetch)
     )
     if media_kind:
         stmt = stmt.where(Content.media_kind == media_kind)
-    return list((await db.execute(stmt)).scalars())
+    stmt = _in_language(stmt, language)
+    return _keep_language(list((await db.execute(stmt)).scalars()), language, limit=limit)

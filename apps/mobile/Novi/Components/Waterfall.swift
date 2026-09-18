@@ -21,23 +21,29 @@ struct Waterfall<Item: Identifiable & Hashable, Content: View>: View {
     var estimatedHeight: (Item, CGFloat) -> CGFloat
     @ViewBuilder var content: (Item, CGFloat) -> Content
 
-    @State private var width: CGFloat = UIScreen.main.bounds.width
+    @State private var width: CGFloat = NV.screenWidth
+
+    private var columnCount: Int {
+        columns > 0 ? columns : NV.feedColumns(for: width)
+    }
 
     private var columnWidth: CGFloat {
-        let usable = width - inset * 2 - spacing * CGFloat(columns - 1)
-        return max(1, usable / CGFloat(columns))
+        let count = CGFloat(columnCount)
+        let usable = width - inset * 2 - spacing * (count - 1)
+        return max(1, (usable / count).rounded(.down))
     }
 
     /// Greedy shortest-column packing, in feed order. Anything cleverer —
     /// balancing the tails, say — reorders the feed, and the feed's order IS
     /// the ranking. It is not ours to rearrange for a tidier bottom edge.
     private var buckets: [[Item]] {
-        var out = Array(repeating: [Item](), count: columns)
-        var heights = Array(repeating: CGFloat(0), count: columns)
+        let count = columnCount
+        var out = Array(repeating: [Item](), count: count)
+        var heights = Array(repeating: CGFloat(0), count: count)
         let w = columnWidth
         for item in items {
             var shortest = 0
-            for c in 1..<columns where heights[c] < heights[shortest] - 0.5 { shortest = c }
+            for c in 1..<count where heights[c] < heights[shortest] - 0.5 { shortest = c }
             out[shortest].append(item)
             heights[shortest] += estimatedHeight(item, w) + spacing
         }
@@ -45,25 +51,37 @@ struct Waterfall<Item: Identifiable & Hashable, Content: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: spacing) {
-            ForEach(Array(buckets.enumerated()), id: \.offset) { _, column in
-                LazyVStack(spacing: spacing) {
-                    ForEach(column) { item in
-                        content(item, columnWidth)
+        VStack(spacing: 0) {
+            // Measured on a probe pinned to the SCROLL CONTAINER, not on the
+            // columns. The columns are sized from this number, so measuring
+            // them feeds the result back into its own input: one card that
+            // reports itself wider than its column — a remote cover does,
+            // because `scaledToFill` carries the image's own pixel size —
+            // widens the grid permanently and pushes both edges off screen.
+            Color.clear
+                .frame(height: 0)
+                .containerRelativeFrame(.horizontal)
+                .background {
+                    GeometryReader { g in
+                        Color.clear.preference(key: WaterfallWidth.self, value: g.size.width)
                     }
                 }
-                .frame(width: columnWidth)
+
+            HStack(alignment: .top, spacing: spacing) {
+                ForEach(Array(buckets.enumerated()), id: \.offset) { _, column in
+                    LazyVStack(spacing: spacing) {
+                        ForEach(column) { item in
+                            content(item, columnWidth)
+                                // The column's width is the contract. Without
+                                // it an oversized card grows the whole row.
+                                .frame(width: columnWidth)
+                        }
+                    }
+                    .frame(width: columnWidth)
+                }
             }
-        }
-        .padding(.horizontal, inset)
-        // Measured on a full-width backdrop, not on the columns themselves:
-        // the columns are sized FROM `width`, so measuring them would just
-        // report back whatever was already assumed and never converge.
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background {
-            GeometryReader { g in
-                Color.clear.preference(key: WaterfallWidth.self, value: g.size.width)
-            }
+            .padding(.horizontal, inset)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onPreferenceChange(WaterfallWidth.self) { w in
             if w > 0, abs(w - width) > 0.5 { width = w }

@@ -76,14 +76,14 @@ async def dev_skip(
     db: DB,
     body: DevSkipRequest = Body(default_factory=DevSkipRequest),
 ) -> AuthResponse:
-    """Issue a real session for the reserved developer account.
+    """Issue a real session for this install's developer account.
 
     Exists so a local build can reach the product without a password. In
     production the route 404s unless DEV_SKIP_SECRET is set, and then the
     body must carry that secret.
     """
     user, tokens = await auth_service.skip_login(
-        db, secret=body.secret, user_agent=_ua(request)
+        db, secret=body.secret, device_id=body.device_id, user_agent=_ua(request)
     )
     return AuthResponse(user=UserOut.model_validate(user), tokens=tokens)
 

@@ -7,8 +7,9 @@ from sqlalchemy import select
 
 from novi.core.deps import DB, CurrentUser
 from novi.core.errors import NotFound, ValidationFailed
+from novi.core.lang import content_matches_language, language_clause, language_key
 from novi.core.ratelimit import rate_limit
-from novi.models import Concept, Discussion, Question, Subject
+from novi.models import Concept, Discussion, Profile, Question, Subject
 from novi.schemas.ai import ASK_MODES, AskRequest, AskResponse, SummarizeRequest
 from novi.schemas.common import Ok
 from novi.schemas.content import DiscussionOut
@@ -148,17 +149,29 @@ async def search(
             await db.execute(select(Concept).where(Concept.name.ilike(f"%{cleaned}%")).limit(1))
         ).scalar_one_or_none()
 
-    rows = await content_service.search(db, query=cleaned, limit=limit)
+    profile = (
+        await db.execute(select(Profile).where(Profile.user_id == user.id))
+    ).scalar_one_or_none()
+    language = language_key(profile.language if profile else None) or "en"
+
+    rows = await content_service.search(db, query=cleaned, limit=limit, language=language)
     refs = await content_service.concept_refs(db, [r.id for r in rows])
 
-    discussions = (
-        await db.execute(
-            select(Discussion)
-            .where(Discussion.title.ilike(f"%{cleaned}%") | Discussion.body.ilike(f"%{cleaned}%"))
-            .order_by(Discussion.upvotes.desc())
-            .limit(5)
-        )
-    ).scalars().all()
+    discussions = [
+        row
+        for row in (
+            await db.execute(
+                select(Discussion)
+                .where(
+                    language_clause(Discussion.language, language),
+                    Discussion.title.ilike(f"%{cleaned}%") | Discussion.body.ilike(f"%{cleaned}%"),
+                )
+                .order_by(Discussion.upvotes.desc())
+                .limit(12)
+            )
+        ).scalars().all()
+        if content_matches_language(row.language, row.title, row.body, language)
+    ][:5]
 
     subject = await db.get(Subject, concept.subject_id) if concept else None
     return {

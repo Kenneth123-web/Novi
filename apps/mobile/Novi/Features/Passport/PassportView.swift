@@ -16,6 +16,8 @@ struct PassportView: View {
     @State private var quizConcept: QuizTarget?
     @State private var poster: PosterImage?
     @State private var rendering = false
+    @State private var editingProfile = false
+    @State private var expandedCourses: Set<String> = []
 
     private struct QuizTarget: Identifiable {
         let id: UUID
@@ -35,8 +37,14 @@ struct PassportView: View {
                 VStack(alignment: .leading, spacing: NV.Space.xl) {
                     if let passport {
                         cover(passport)
+                        if let curriculum = passport.curriculum, !passport.courseMap.isEmpty {
+                            curriculumHeader(curriculum, passport: passport)
+                            courseSections(passport.courseMap)
+                        } else {
+                            customizationEmpty
+                        }
                         if !passport.stamps.isEmpty { stamps(passport) }
-                        if passport.subjectCards.isEmpty {
+                        if passport.subjectCards.isEmpty && passport.courseMap.isEmpty {
                             NVEmptyState(
                                 icon: "checkmark.seal",
                                 title: "No stamps yet",
@@ -45,7 +53,7 @@ struct PassportView: View {
                                 action: { onAsk(AskSeed(question: "", autoSubmit: false)) }
                             )
                             .padding(.top, NV.Space.xl)
-                        } else {
+                        } else if !passport.subjectCards.isEmpty {
                             subjects(passport)
                         }
                     } else if let error {
@@ -80,6 +88,11 @@ struct PassportView: View {
             .sheet(item: $poster) { item in
                 ShareSheet(items: [item.image])
             }
+            .sheet(isPresented: $editingProfile, onDismiss: {
+                Task { await load() }
+            }) {
+                LearningProfileEditor()
+            }
             .navigationDestination(for: RelatedConceptDTO.self) { concept in
                 ConceptView(conceptID: concept.conceptID, fallbackName: concept.name,
                             chrome: chrome, onAsk: onAsk)
@@ -87,7 +100,7 @@ struct PassportView: View {
             .sheet(item: $quizConcept) { target in
                 QuizView(conceptID: target.id, conceptName: target.name)
             }
-            .task { await load() }
+            .task(id: session.profile) { await load() }
         }
     }
 
@@ -305,5 +318,242 @@ struct PassportView: View {
         } catch {
             self.error = APIError.transport(error)
         }
+    }
+
+    // MARK: Grade course map
+
+    /// Running head in the document voice: tiny, letterspaced, quiet — the
+    /// same register Travelers uses on a passport leaf, applied to a grade.
+    private func curriculumHeader(
+        _ curriculum: PassportCurriculumContextDTO,
+        passport: PassportDTO
+    ) -> some View {
+        let currentCount = passport.courseMap.filter(\.isCurrent).count
+        let focusCount = passport.courseMap.filter(\.isFocus).count
+        return VStack(alignment: .leading, spacing: NV.Space.m) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("\(curriculum.gradeLabel.uppercased()) · \(curriculum.ageRange.uppercased())")
+                        .font(.system(size: 10, weight: .bold))
+                        .tracking(1.6)
+                        .foregroundStyle(NV.inkTertiary)
+                    NVSectionHeader(
+                        title: "Course map",
+                        subtitle: "\(passport.courseMap.count) courses · \(currentCount) current · \(focusCount) focus",
+                        action: ("Customize", { editingProfile = true })
+                    )
+                }
+            }
+
+            if let framework = curriculum.framework, !framework.isEmpty {
+                HStack(spacing: NV.Space.s) {
+                    NVTag(text: framework, tint: NV.spark)
+                    Text(curriculum.frameworkNote)
+                        .font(NV.caption)
+                        .foregroundStyle(NV.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text(curriculum.frameworkNote)
+                    .font(NV.caption)
+                    .foregroundStyle(NV.inkTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if curriculum.selectionSource == "inferred" {
+                Text("Recovered from the subjects you picked earlier. Edit to name the exact classes you take.")
+                    .font(NV.small)
+                    .foregroundStyle(NV.inkSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .accessibilityIdentifier("passport.curriculum")
+    }
+
+    private func courseSections(_ courses: [PassportCourseDTO]) -> some View {
+        VStack(alignment: .leading, spacing: NV.Space.xl) {
+            ForEach(PassportCourseSection.allCases, id: \.self) { section in
+                let items = courses.filter { $0.section == section }
+                if !items.isEmpty {
+                    VStack(alignment: .leading, spacing: NV.Space.m) {
+                        NVSectionHeader(title: section.title, subtitle: section.subtitle)
+                        ForEach(items) { course in
+                            courseCard(course)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func courseCard(_ course: PassportCourseDTO) -> some View {
+        let expanded = expandedCourses.contains(course.slug)
+        return VStack(alignment: .leading, spacing: NV.Space.m) {
+            Button {
+                if expanded {
+                    expandedCourses.remove(course.slug)
+                } else {
+                    expandedCourses.insert(course.slug)
+                }
+            } label: {
+                VStack(alignment: .leading, spacing: NV.Space.s) {
+                    HStack(alignment: .top, spacing: NV.Space.m) {
+                        Image(systemName: course.icon)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(NV.spark)
+                            .frame(width: 34, height: 34)
+                            .background(NV.sparkSoft)
+                            .clipShape(Circle())
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(course.subjectName)
+                                .font(NV.caption)
+                                .foregroundStyle(NV.inkTertiary)
+                            Text(course.name)
+                                .font(NV.bodyStrong)
+                                .foregroundStyle(NV.ink)
+                                .multilineTextAlignment(.leading)
+                            if course.name != course.canonicalName {
+                                Text(course.canonicalName)
+                                    .font(NV.caption)
+                                    .foregroundStyle(NV.inkTertiary)
+                            }
+                        }
+
+                        Spacer(minLength: 0)
+
+                        VStack(alignment: .trailing, spacing: 4) {
+                            laneBadge(course)
+                            Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(NV.inkGhost)
+                        }
+                    }
+
+                    Text(course.description)
+                        .font(NV.small)
+                        .foregroundStyle(NV.inkSecondary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    FlowRow(spacing: 6, lineSpacing: 6) {
+                        ForEach(course.skills, id: \.self) { skill in
+                            NVTag(text: skill, tint: NV.inkTertiary)
+                        }
+                    }
+
+                    if !course.focusAreas.isEmpty {
+                        FlowRow(spacing: 6, lineSpacing: 6) {
+                            ForEach(course.focusAreas) { area in
+                                NVTag(text: area.name, icon: "scope", tint: NV.spark)
+                            }
+                        }
+                    }
+
+                    HStack(spacing: NV.Space.s) {
+                        Image(systemName: course.statusIcon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(NV.mastery(course.status == "not_started" ? "viewed" : course.status))
+                        Text(course.statusLabel)
+                            .font(NV.caption)
+                            .foregroundStyle(NV.inkSecondary)
+                        Spacer(minLength: 0)
+                        if course.totalConcepts > 0 {
+                            Text("\(course.learnedConcepts)/\(course.totalConcepts) learned")
+                                .font(NV.caption)
+                                .foregroundStyle(NV.inkTertiary)
+                        }
+                    }
+                    NVProgressBar(value: course.progress, tint: course.isFocus ? NV.spark : NV.ink900)
+
+                    Text(course.recommendationReason)
+                        .font(NV.caption)
+                        .foregroundStyle(NV.inkTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let goal = course.focusGoal {
+                        NVTag(text: goal, icon: "target", tint: NV.spark)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if expanded, !course.concepts.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(course.concepts) { concept in
+                        courseConceptRow(concept)
+                    }
+                }
+            } else if expanded, course.concepts.isEmpty {
+                Text("No linked concepts yet for this course.")
+                    .font(NV.small)
+                    .foregroundStyle(NV.inkTertiary)
+            }
+        }
+        .padding(NV.Space.l)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .cardSurface()
+        .accessibilityIdentifier("passport.course.\(course.slug)")
+    }
+
+    private func courseConceptRow(_ concept: PassportCourseConceptDTO) -> some View {
+        HStack(spacing: NV.Space.s) {
+            Image(systemName: iconFor(concept.mastery))
+                .font(.system(size: 13))
+                .foregroundStyle(NV.mastery(concept.mastery))
+                .frame(width: 18)
+
+            NavigationLink(value: RelatedConceptDTO(
+                name: concept.name, id: concept.id, slug: concept.slug
+            )) {
+                Text(concept.name)
+                    .font(NV.small)
+                    .foregroundStyle(NV.ink)
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: NV.Space.s)
+
+            Text(concept.mastery.capitalized)
+                .font(NV.caption)
+                .foregroundStyle(NV.mastery(concept.mastery))
+
+            if concept.mastery != "mastered", let id = concept.conceptID {
+                Button {
+                    quizConcept = QuizTarget(id: id, name: concept.name)
+                } label: {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 13))
+                        .foregroundStyle(NV.spark)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 7)
+        .hairline(.bottom, color: NV.hairline.opacity(0.6))
+    }
+
+    private func laneBadge(_ course: PassportCourseDTO) -> some View {
+        let tint: Color
+        switch course.section {
+        case .focus: tint = NV.spark
+        case .current: tint = NV.ink
+        case .required: tint = NV.inkSecondary
+        case .recommended: tint = NV.inkTertiary
+        }
+        return NVTag(text: course.section.title, tint: tint, filled: course.section == .focus)
+    }
+
+    private var customizationEmpty: some View {
+        NVEmptyState(
+            icon: "rectangle.and.pencil.and.ellipsis",
+            title: "No grade map yet",
+            message: "Tell Novi your grade, the classes you take, and what you want to strengthen. The passport is built from those answers — not a generic list.",
+            actionTitle: "Customize learning",
+            action: { editingProfile = true }
+        )
+        .padding(.vertical, NV.Space.l)
+        .accessibilityIdentifier("passport.customizationEmpty")
     }
 }

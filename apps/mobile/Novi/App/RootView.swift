@@ -85,8 +85,11 @@ struct MainTabs: View {
             }
 
             TabBar(tab: $tab, chrome: chrome)
+                // Only the bar ignores the keyboard. When the whole stack did,
+                // the Ask composer could not rise either and the keyboard sat
+                // straight on top of the one control the screen is for.
+                .ignoresSafeArea(.keyboard, edges: .bottom)
         }
-        .ignoresSafeArea(.keyboard)
         .task {
             await session.loadSubjects()
             Demo.once("ask") {

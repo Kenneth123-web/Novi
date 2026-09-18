@@ -6,4 +6,5 @@
 NOV_API_BASE_URL =
 NOV_API_USB_URL =
 NOV_API_HOST_URL =
+NOV_API_TUNNEL_URL =
 #include? "Local.xcconfig"

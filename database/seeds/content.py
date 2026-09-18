@@ -148,7 +148,13 @@ def build_for_concept(
     out: list[Sample] = []
     for i in range(count):
         b = _rng(f"{concept_slug}:{i}")
-        platform, kind = _weighted_platform(b[0])
+        # Item 0 is always an English YouTube video. An English-only profile
+        # (the only language the client currently offers) must still have
+        # something to rank and search; the rest of the mix stays multilingual.
+        if i == 0:
+            platform, kind = "youtube", "video"
+        else:
+            platform, kind = _weighted_platform(b[0])
 
         templates = {
             "video": VIDEO_TEMPLATES,

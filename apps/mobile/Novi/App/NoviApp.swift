@@ -4,6 +4,12 @@ import SwiftUI
 struct NoviApp: App {
     @StateObject private var session = AppSession()
 
+    init() {
+        // Before anything reads the stored session: a reinstall must not find
+        // the previous install's refresh token still sitting in the keychain.
+        InstallIdentity.bootstrap(forceFresh: Demo.freshInstall)
+    }
+
     var body: some Scene {
         WindowGroup {
             RootView()

@@ -40,6 +40,11 @@ async def test_onboarding_sets_profile_and_orders_interests(
     assert weights["mathematics"] > weights["computer-science"] > weights["physics"]
     assert profile["grade"] == "11"
     assert profile["weak_subjects"] == ["mathematics"]
+    assert [item["course_slug"] for item in profile["current_courses"]] == [
+        "high-11-mathematics",
+        "high-11-computer-science",
+        "high-11-physics",
+    ]
 
 
 async def test_onboarding_rejects_unknown_values(
@@ -139,10 +144,8 @@ async def test_weak_subject_pulls_that_subject_forward(
     feed = await client.get("/feed", headers=auth["headers"], params={"limit": 12})
     items = feed.json()["items"]
     assert items
-    math_slugs = {
-        "limits", "derivatives", "chain-rule", "integrals", "functions",
-        "linear-equations", "quadratic-equations",
-    }
+    concepts = await client.get("/concepts", params={"subject_slug": "mathematics"})
+    math_slugs = {c["slug"] for c in concepts.json()}
     math_count = sum(
         1
         for i in items
@@ -287,3 +290,129 @@ async def test_concept_graph_offers_somewhere_to_go_next(
     assert r.status_code == 200
     assert r.json()["next"], "the rabbit hole must not dead-end"
     assert "chain-rule" in {c["slug"] for c in r.json()["next"]}
+
+
+async def test_english_feed_and_search_exclude_other_languages(
+    client: AsyncClient, onboarded: dict
+) -> None:
+    import uuid
+
+    from sqlalchemy import select
+
+    from novi.core.lang import contains_non_latin
+    from novi.db import get_sessionmaker
+    from novi.models import Concept, Content, ContentConcept
+
+    async with get_sessionmaker()() as db:
+        concept = (
+            await db.execute(select(Concept).where(Concept.slug == "derivatives"))
+        ).scalar_one()
+        zh = Content(
+            platform="bilibili",
+            external_id=f"zh-derivatives-{uuid.uuid4().hex[:8]}",
+            title="导数超详细讲解",
+            description="高中数学导数一遍就会",
+            language="zh",
+            media_kind="video",
+            subject_id=concept.subject_id,
+            topic="Derivatives",
+            quality=0.99,
+            difficulty=3,
+            is_sample=True,
+            tags=["derivatives"],
+        )
+        mistagged = Content(
+            platform="youtube",
+            external_id=f"en-cjk-{uuid.uuid4().hex[:8]}",
+            title="导数 Derivatives 精讲",
+            description="高中",
+            language="en",
+            media_kind="video",
+            subject_id=concept.subject_id,
+            topic="Derivatives",
+            quality=0.98,
+            difficulty=3,
+            is_sample=True,
+            tags=["derivatives"],
+        )
+        db.add_all([zh, mistagged])
+        await db.flush()
+        db.add_all(
+            [
+                ContentConcept(content_id=zh.id, concept_id=concept.id),
+                ContentConcept(content_id=mistagged.id, concept_id=concept.id),
+            ]
+        )
+        await db.commit()
+        blocked = {str(zh.id), str(mistagged.id)}
+
+    feed = await client.get("/feed", headers=onboarded["headers"], params={"limit": 20})
+    assert feed.status_code == 200, feed.text
+    items = feed.json()["items"]
+    assert items
+    ids = {item["content"]["id"] for item in items}
+    assert ids.isdisjoint(blocked)
+    assert all(item["content"]["language"] == "en" for item in items)
+    assert all(not contains_non_latin(item["content"]["title"]) for item in items)
+
+    search = await client.get(
+        "/search", headers=onboarded["headers"], params={"q": "Derivatives"}
+    )
+    assert search.status_code == 200
+    found = {row["id"] for row in search.json()["content"]}
+    assert found.isdisjoint(blocked)
+    assert all(row["language"] == "en" for row in search.json()["content"])
+
+
+async def test_biology_area_personalizes_the_feed(
+    client: AsyncClient, seeded: None, registration: dict
+) -> None:
+    genetics = {
+        "mitosis-meiosis",
+        "dna-replication",
+        "protein-synthesis",
+        "mendelian-genetics",
+    }
+    ecology = {"natural-selection", "ecosystems"}
+
+    async def make(email_suffix: str, areas: list[str]) -> list[dict]:
+        payload = dict(
+            registration,
+            email=f"{email_suffix}@example.com",
+            username=f"u{email_suffix}",
+        )
+        created = await client.post("/auth/register", json=payload)
+        headers = {"Authorization": f"Bearer {created.json()['tokens']['access_token']}"}
+        onboarded = await client.post(
+            "/onboarding",
+            headers=headers,
+            json={
+                "stage": "high",
+                "grade": "11",
+                "current_courses": [{"course_slug": "high-11-biology", "name": "Bio"}],
+                "focus_subject_slugs": ["biology"],
+                "focus_goals": {"biology": "exam_readiness"},
+                "focus_areas": {"biology": areas},
+                "language": "en",
+            },
+        )
+        assert onboarded.status_code == 200, onboarded.text
+        feed = await client.get("/feed", headers=headers, params={"limit": 16})
+        assert feed.status_code == 200, feed.text
+        return feed.json()["items"]
+
+    def count(items: list[dict], slugs: set[str]) -> int:
+        return sum(
+            1
+            for item in items
+            if any(concept["slug"] in slugs for concept in item["content"]["concepts"])
+        )
+
+    genetics_feed = await make("bio-genetics", ["genetics"])
+    ecology_feed = await make("bio-ecology", ["ecology"])
+    assert genetics_feed and ecology_feed
+    assert count(genetics_feed, genetics) > count(genetics_feed, ecology)
+    assert count(ecology_feed, ecology) >= 1
+    assert {item["content"]["id"] for item in genetics_feed} != {
+        item["content"]["id"] for item in ecology_feed
+    }

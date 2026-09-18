@@ -12,6 +12,8 @@ wrong and easy to lose in a refactor:
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -26,6 +28,7 @@ from novi.core.security import (
     create_access_token,
     fingerprint,
     hash_password,
+    needs_rehash,
     new_opaque_token,
     secret_matches,
     verify_password,
@@ -43,6 +46,41 @@ _DUMMY_HASH = hash_password(uuid.uuid4().hex)
 # later registers this address they get this row, which is the point.
 DEV_SKIP_EMAIL = "developer@novi.app"
 DEV_SKIP_USERNAME = "developer"
+DEV_SKIP_DOMAIN = "novi.app"
+
+
+def _device_slug(device_id: str) -> str:
+    """A short, opaque, stable key for one install.
+
+    Hashed rather than used raw: the client's identifier is not ours to store
+    in an address, and a hash is guaranteed to fit the username column and
+    its character class whatever the client sends.
+    """
+    cleaned = device_id.strip()
+    if not cleaned:
+        return ""
+    return hashlib.blake2s(cleaned.encode("utf-8"), digest_size=6).hexdigest()
+
+
+def _dev_identity(device_id: str) -> tuple[str, str]:
+    """(email, username) for a skip login.
+
+    No device id means the legacy shared account, which every existing script
+    and test still reaches.
+    """
+    slug = _device_slug(device_id)
+    if not slug:
+        return DEV_SKIP_EMAIL, DEV_SKIP_USERNAME
+    return f"developer+{slug}@{DEV_SKIP_DOMAIN}", f"developer-{slug}"
+
+
+def _is_reserved(email: str, username: str) -> bool:
+    """Developer slots belong to skip login, not to whoever registers first."""
+    local = email.split("@", 1)[0]
+    host = email.split("@", 1)[1] if "@" in email else ""
+    if host == DEV_SKIP_DOMAIN and local.split("+", 1)[0] == DEV_SKIP_USERNAME:
+        return True
+    return username.lower().split("-", 1)[0] == DEV_SKIP_USERNAME
 
 
 def _now() -> datetime:
@@ -77,10 +115,17 @@ async def register(
 ) -> tuple[User, TokenPair]:
     email = email.strip().lower()
     username = username.strip()
+    if _is_reserved(email, username):
+        field = "email" if email.endswith(f"@{DEV_SKIP_DOMAIN}") else "username"
+        raise Conflict(
+            f"That {field} is already taken",
+            code="ALREADY_EXISTS",
+            details={"field": field},
+        )
     user = User(
         email=email,
         username=username,
-        password_hash=hash_password(password),
+        password_hash=await asyncio.to_thread(hash_password, password),
         display_name=(display_name or username)[:80],
         avatar_seed=uuid.uuid4().hex[:12],
     )
@@ -115,11 +160,14 @@ async def login(
 ) -> tuple[User, TokenPair]:
     email = email.strip().lower()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    ok = verify_password(password, user.password_hash if user else _DUMMY_HASH)
+    stored = user.password_hash if user else _DUMMY_HASH
+    ok = await asyncio.to_thread(verify_password, password, stored)
     if user is None or not ok or not user.is_active:
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
     if await console_client.is_blocked(str(user.id)):
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
+    if needs_rehash(user.password_hash):
+        user.password_hash = await asyncio.to_thread(hash_password, password)
     user.last_seen_at = _now()
     tokens = await _issue(db, user, user_agent)
     console_client.spawn(
@@ -155,13 +203,17 @@ async def logout(db: AsyncSession, *, refresh_token: str) -> None:
 
 
 async def skip_login(
-    db: AsyncSession, *, secret: str = "", user_agent: str = ""
+    db: AsyncSession, *, secret: str = "", device_id: str = "", user_agent: str = ""
 ) -> tuple[User, TokenPair]:
-    """Mint a real session for the reserved developer user.
+    """Mint a real session for the developer account belonging to one install.
 
     Production: the route does not exist unless DEV_SKIP_SECRET is set, and
     then the presented secret must match. Development and test: open, unless
     a secret has been configured, in which case it is required there too.
+
+    The account is keyed on the caller's install id. One shared row meant a
+    freshly installed app opened straight onto the previous tester's profile,
+    history and "continue where you left off" card.
     """
     s = get_settings()
     if s.env == "production" and not s.dev_skip_secret:
@@ -169,22 +221,21 @@ async def skip_login(
     if s.dev_skip_secret and not secret_matches(secret, s.dev_skip_secret):
         raise Unauthorized("Developer skip is not allowed", code="UNAUTHORIZED")
 
-    user = (
-        await db.execute(select(User).where(User.email == DEV_SKIP_EMAIL))
-    ).scalar_one_or_none()
+    email, username = _dev_identity(device_id)
+    user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
     if user is None:
-        username = DEV_SKIP_USERNAME
         taken = (
             await db.execute(select(User.id).where(User.username == username))
         ).scalar_one_or_none()
         if taken is not None:
             username = f"developer_{uuid.uuid4().hex[:8]}"
+        hashed = await asyncio.to_thread(hash_password, new_opaque_token())
         user = User(
-            email=DEV_SKIP_EMAIL,
+            email=email,
             username=username,
-            password_hash=hash_password(new_opaque_token()),
+            password_hash=hashed,
             display_name="Developer",
-            avatar_seed="developer",
+            avatar_seed=_device_slug(device_id) or "developer",
         )
         user.profile = Profile()
         db.add(user)
@@ -192,16 +243,15 @@ async def skip_login(
             await db.flush()
         except IntegrityError:
             await db.rollback()
-            user = (
-                await db.execute(select(User).where(User.email == DEV_SKIP_EMAIL))
-            ).scalar_one()
+            user = (await db.execute(select(User).where(User.email == email))).scalar_one()
     if not user.is_active or await console_client.is_blocked(str(user.id)):
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
 
     # Skip is a login, not a reset. The client still opens the questionnaire
     # when grade / stuck-on subjects are missing; wiping onboarded_at here
     # made every Skip land on the welcome page even after the profile was
-    # filled in.
+    # filled in. A reinstall gets a new install id instead, which is a new
+    # row — empty by construction rather than emptied by hand.
     user.last_seen_at = _now()
     tokens = await _issue(db, user, user_agent)
     console_client.spawn(

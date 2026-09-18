@@ -12,6 +12,7 @@ struct HomeView: View {
     @EnvironmentObject private var session: AppSession
     @StateObject private var model = FeedModel()
     @State private var path = NavigationPath()
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -160,10 +161,13 @@ struct HomeView: View {
             items: model.items,
             spacing: NV.gutter,
             inset: NV.gutter,
-            estimatedHeight: { item, width in ContentCard.height(for: item, width: width) }
-        ) { item, _ in
+            estimatedHeight: { item, width in
+                ContentCard.height(for: item, width: width, typeSize: typeSize)
+            }
+        ) { item, width in
             ContentCard(
                 item: item,
+                width: width,
                 onOpen: { path.append(item.content) },
                 onSave: { Task { await model.toggleSave(item) } }
             )
@@ -272,13 +276,19 @@ final class FeedModel: ObservableObject {
         }
         // Ordered weak-to-strong, so "continue" offers the concept with the
         // most left to do rather than the one nearest the finish.
+        //
+        // `discovered` is excluded: the server writes that row when a concept
+        // merely appears in the feed, so including it invented a "pick up
+        // where you left off" card for a learner who has not opened anything.
+        // No history, no card.
         let ladder = ["discovered", "viewed", "explored", "practiced", "learned", "mastered"]
+        let started = ladder.firstIndex(of: "viewed")!
         let candidates = passport.subjectCards
             .flatMap(\.concepts)
-            .filter { $0.mastery != "mastered" }
             .compactMap { concept -> ContinueItem? in
                 guard let id = concept.conceptID,
-                      let rank = ladder.firstIndex(of: concept.mastery)
+                      let rank = ladder.firstIndex(of: concept.mastery),
+                      rank >= started, concept.mastery != "mastered"
                 else { return nil }
                 return ContinueItem(
                     id: id,

@@ -302,6 +302,8 @@ async def test_ask_sends_the_students_context_to_the_model(
     assert "high school student" in prompt
     assert "AP" in prompt
     assert "10-year-old" in prompt
+    assert "Their current classes are:" in prompt
+    assert "Functions, Trigonometry & Statistics" in prompt
 
 
 async def test_ask_rejects_an_unknown_mode(client: AsyncClient, onboarded: dict) -> None:

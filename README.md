@@ -95,8 +95,11 @@ it. Open the Worker URL to disable a user or read what they spent. See
 [`services/console/README.md`](services/console/README.md).
 
 The simulator shares the host's loopback, so the app finds the API at
-`127.0.0.1:8000` with no configuration. A device build needs the host's LAN
-address — pass `-apiBaseURL http://192.168.x.x:8000/v1`.
+`127.0.0.1:8000` with no configuration. A device build needs a reachable
+origin: `./scripts/dev.sh api` listens on every interface and writes the
+Mac's LAN address, Bonjour name and (if `cloudflared` is installed) a public
+HTTPS tunnel into `apps/mobile/Configs/Local.xcconfig`. Rebuild the app
+after that. `-apiBaseURL http://192.168.x.x:8000/v1` still overrides.
 
 ## Design
 

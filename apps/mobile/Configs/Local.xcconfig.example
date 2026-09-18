@@ -10,6 +10,8 @@ DEVELOPMENT_TEAM = XXXXXXXXXX
 // NOV_API_BASE_URL = http:/$()/192.168.x.x:8000/v1
 // NOV_API_USB_URL = http:/$()/169.254.x.x:8000/v1
 // NOV_API_HOST_URL = http:/$()/Your-Mac.local:8000/v1
+// Written by `./scripts/dev.sh api` when cloudflared is installed:
+// NOV_API_TUNNEL_URL = https:/$()/xxxx.trycloudflare.com/v1
 
 // Only needed if luke.novi.app is already registered to someone else's team —
 // an explicit App ID is globally unique, so a device build under a different

@@ -166,22 +166,32 @@ struct Avatar: View {
 
 /// Prefer the ingested thumbnail; fall back to the drawn cover so a missing
 /// or slow image does not leave a grey hole in the masonry.
+///
+/// Whatever it draws, it takes exactly the size it is offered. The image is
+/// hung off a `Color.clear` rather than being the layout's child on purpose:
+/// a `resizable().scaledToFill()` image reports the picture's own pixel size
+/// as its ideal, so anything that grows to fit its child — `frame(maxWidth:
+/// .infinity)` does — ends up as wide as the JPEG instead of as wide as the
+/// column it was placed in.
 struct RemoteCover: View {
     let url: String?
     let seed: String
 
     var body: some View {
-        if let url, let parsed = URL(string: url), !url.isEmpty {
-            AsyncImage(url: parsed) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().scaledToFill()
-                default:
-                    CoverArt(seed: seed)
+        Color.clear.overlay {
+            if let url, let parsed = URL(string: url), !url.isEmpty {
+                AsyncImage(url: parsed) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image.resizable().scaledToFill()
+                    default:
+                        CoverArt(seed: seed)
+                    }
                 }
+            } else {
+                CoverArt(seed: seed)
             }
-        } else {
-            CoverArt(seed: seed)
         }
+        .clipped()
     }
 }

@@ -27,6 +27,10 @@ def get_engine() -> AsyncEngine:
             pool_size=s.db_pool_size,
             max_overflow=s.db_max_overflow,
             pool_pre_ping=True,
+            # Skip/login used to hang until the iOS client gave up: asyncpg's
+            # default connect wait is a minute, and the pool wait is 30s.
+            pool_timeout=5,
+            connect_args={"timeout": 5, "command_timeout": 15},
         )
     return _engine
 

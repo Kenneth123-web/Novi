@@ -97,6 +97,7 @@ final class AppSession: ObservableObject {
         email: String, username: String, password: String, displayName: String,
         turnstileToken: String
     ) async throws {
+        profile = nil
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/register",
             body: RegisterBody(
@@ -105,7 +106,7 @@ final class AppSession: ObservableObject {
             )
         )
         await api.store(response.tokens)
-        apply(user: response.user)
+        await enter(response.user)
     }
 
     func prepareNetwork() async {
@@ -113,6 +114,10 @@ final class AppSession: ObservableObject {
     }
 
     func signIn(email: String, password: String, turnstileToken: String) async throws {
+        // Whoever was signed in before does not get to decide which screen the
+        // next person lands on. Cleared here so a failed `loadMe` cannot leave
+        // the previous account's profile standing in for this one.
+        profile = nil
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/login",
             body: LoginBody(email: email, password: password, turnstileToken: turnstileToken)
@@ -121,12 +126,15 @@ final class AppSession: ObservableObject {
         await enter(response.user)
     }
 
-    /// `POST /auth/dev-skip` — a real session for the reserved developer
+    /// `POST /auth/dev-skip` — a real session for THIS install's developer
     /// account, not a fake phase override. Production APIs 404 this route.
     ///
-    /// Skip is a login, not a completed profile. If grade / weak subjects
-    /// are missing, this still lands on the questionnaire.
+    /// Skip is a login, not a completed profile. The account is keyed on the
+    /// install id, so a fresh install gets an empty one and lands on the
+    /// questionnaire, while a later skip on the same install returns to the
+    /// profile that was already filled in.
     func skipAsDeveloper() async throws {
+        profile = nil
         let response: AuthResponseDTO = try await api.send(
             .post, "auth/dev-skip", body: DevSkipBody()
         )
@@ -161,13 +169,21 @@ final class AppSession: ObservableObject {
         subjects = (try? await api.send(.get, "subjects", as: [SubjectDTO].self)) ?? []
     }
 
-    func completeOnboarding(_ body: OnboardingBody) async throws {
+    func gradeCurriculum(stage: String, grade: String) async throws -> GradeCurriculumDTO {
+        try await api.send(.get, "curriculum/\(stage)/\(grade)")
+    }
+
+    func curriculumGrades() async throws -> [GradeSpecDTO] {
+        try await api.send(.get, "curriculum")
+    }
+
+    func completeOnboarding(_ body: LearningOnboardingBody) async throws {
         let me: MeDTO = try await api.authed(.post, "onboarding", body: body)
         profile = me.profile
         apply(user: me.user)
     }
 
-    func updateProfile(_ patch: ProfilePatchBody) async throws {
+    func updateProfile(_ patch: LearningProfilePatchBody) async throws {
         let me: MeDTO = try await api.authed(.patch, "me", body: patch)
         profile = me.profile
         apply(user: me.user)
@@ -215,10 +231,14 @@ final class AppSession: ObservableObject {
         return !grade.isEmpty && !profile.weakSubjects.isEmpty && !profile.subjectOrder.isEmpty
     }
 
+    /// The questionnaire is gated on the ANSWERS, not on an `onboarded_at`
+    /// timestamp: the answers are what the ranker and the tutor read, so they
+    /// are the only honest test of whether there is a feed worth showing.
+    ///
+    /// The other half of "first run asks, later runs do not" lives in the
+    /// install id — a reinstall is a different account, so it arrives here
+    /// with an empty profile rather than the last tester's.
     private func apply(user: UserDTO) {
-        // The questionnaire is about the profile, not the onboarded_at
-        // timestamp. Skip-login used to clear that timestamp on every tap,
-        // which would otherwise trap a completed profile on the welcome page.
         if profileIsPersonalised(profile) {
             phase = .ready(user)
         } else {

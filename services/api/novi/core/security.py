@@ -53,10 +53,22 @@ def create_access_token(user_id: uuid.UUID, *, is_admin: bool = False) -> tuple[
 def decode_access_token(token: str) -> dict[str, Any] | None:
     s = get_settings()
     try:
-        payload = jwt.decode(token, s.jwt_secret, algorithms=[s.jwt_algorithm])
+        payload = jwt.decode(
+            token,
+            s.jwt_secret,
+            algorithms=[s.jwt_algorithm],
+            options={"require": ["exp", "sub", "iat", "typ"]},
+        )
     except jwt.PyJWTError:
         return None
     return payload if payload.get("typ") == "access" else None
+
+
+def needs_rehash(password_hash: str) -> bool:
+    try:
+        return _hasher.check_needs_rehash(password_hash)
+    except (InvalidHashError, ValueError):
+        return False
 
 
 def new_opaque_token() -> str:

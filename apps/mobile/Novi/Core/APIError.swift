@@ -15,7 +15,33 @@ struct APIError: Error, Equatable {
     /// Extra machine-readable detail, e.g. why the AI is unavailable.
     let reason: String?
 
-    static func transport(_ underlying: Error, reaching url: URL? = nil) -> APIError {
+    static func transport(
+        _ underlying: Error, reaching url: URL? = nil, longRunning: Bool = false
+    ) -> APIError {
+        // A timeout and an unreachable host are different problems with
+        // different fixes. The Ask-specific "shorter question" copy must not
+        // appear on skip-login — that path is not waiting on a model.
+        if let urlError = underlying as? URLError {
+            switch urlError.code {
+            case .timedOut:
+                let message = longRunning
+                    ? "The server took too long to answer. Asking again usually works — "
+                        + "a shorter question is quicker."
+                    : "The server took too long to answer. Try again in a moment."
+                return APIError(
+                    code: "REQUEST_TIMED_OUT",
+                    message: message,
+                    status: 0, requestID: nil, fieldErrors: [:], reason: nil
+                )
+            case .cancelled:
+                return APIError(
+                    code: "CANCELLED", message: "Cancelled.",
+                    status: 0, requestID: nil, fieldErrors: [:], reason: nil
+                )
+            default:
+                break
+            }
+        }
         let whereAt = url?.host.map { " at \($0)" } ?? ""
         return APIError(
             code: "NETWORK_UNREACHABLE",
@@ -41,8 +67,13 @@ struct APIError: Error, Equatable {
     /// so rather than showing a generic failure.
     var isAIUnavailable: Bool { code == "AI_UNAVAILABLE" }
 
+    var isTimeout: Bool { code == "REQUEST_TIMED_OUT" }
+
+    /// The learner walked away from the request; nothing to report.
+    var isCancelled: Bool { code == "CANCELLED" }
+
     var isRetryable: Bool {
-        code == "NETWORK_UNREACHABLE" || status >= 500 || status == 429
+        code == "NETWORK_UNREACHABLE" || isTimeout || status >= 500 || status == 429
     }
 
     func message(for field: String) -> String? { fieldErrors[field] }

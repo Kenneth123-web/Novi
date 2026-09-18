@@ -69,19 +69,19 @@ const sample = {
 
 beforeEach(async () => {
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, username TEXT NOT NULL, display_name TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'register', created_at TEXT NOT NULL, last_seen_at TEXT, last_login_at TEXT, login_count INTEGER NOT NULL DEFAULT 0);",
+    "DROP TABLE IF EXISTS api_usage; DROP TABLE IF EXISTS login_events; DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS admin_sessions;",
   );
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS login_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, event TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);",
+    "CREATE TABLE users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, email_hash TEXT, username TEXT NOT NULL, display_name TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, is_admin INTEGER NOT NULL DEFAULT 0, source TEXT NOT NULL DEFAULT 'register', created_at TEXT NOT NULL, last_seen_at TEXT, last_login_at TEXT, login_count INTEGER NOT NULL DEFAULT 0);",
   );
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS api_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, latency_ms REAL NOT NULL DEFAULT 0, request_id TEXT, kind TEXT NOT NULL DEFAULT 'http', model TEXT, input_tokens INTEGER, output_tokens INTEGER, created_at TEXT NOT NULL);",
+    "CREATE TABLE login_events (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT NOT NULL, event TEXT NOT NULL, source TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL);",
   );
   await env.DB.exec(
-    "CREATE TABLE IF NOT EXISTS admin_sessions (token_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);",
+    "CREATE TABLE api_usage (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id TEXT, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL, latency_ms REAL NOT NULL DEFAULT 0, request_id TEXT, kind TEXT NOT NULL DEFAULT 'http', model TEXT, input_tokens INTEGER, output_tokens INTEGER, created_at TEXT NOT NULL);",
   );
   await env.DB.exec(
-    "DELETE FROM api_usage; DELETE FROM login_events; DELETE FROM users; DELETE FROM admin_sessions;",
+    "CREATE TABLE admin_sessions (token_hash TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL);",
   );
 });
 
@@ -224,9 +224,13 @@ describe("admin", () => {
 
     const users = await run(admin("/api/admin/users", token));
     expect(users.status).toBe(200);
-    const listed = (await users.json()) as { total: number; users: { email: string }[] };
+    const listed = (await users.json()) as {
+      total: number
+      users: { email: string; email_hash?: string }[]
+    }
     expect(listed.total).toBe(1);
     expect(listed.users[0]?.email).toBe("ada@example.com");
+    expect(listed.users[0]?.email_hash).toBeUndefined();
 
     const stats = await run(admin("/api/admin/stats", token));
     const numbers = (await stats.json()) as { users: number; ai_output_tokens_24h: number };
@@ -242,12 +246,22 @@ describe("admin", () => {
     expect(detail.usage.output_tokens).toBe(40);
   });
 
-  it("search finds a user by email fragment", async () => {
+  it("search finds a user by username fragment and by exact email", async () => {
     await run(ingestAccount(sample));
     const token = await signIn();
-    const response = await run(admin("/api/admin/users?q=ada@", token));
-    const body = (await response.json()) as { total: number };
-    expect(body.total).toBe(1);
+    const byName = await run(admin("/api/admin/users?q=ada", token));
+    expect(((await byName.json()) as { total: number }).total).toBe(1);
+    const byEmail = await run(admin("/api/admin/users?q=ada@example.com", token));
+    expect(((await byEmail.json()) as { total: number }).total).toBe(1);
+  });
+
+  it("stores emails as ciphertext in D1", async () => {
+    await run(ingestAccount(sample));
+    const row = await env.DB.prepare("SELECT email FROM users WHERE id = ?")
+      .bind(sample.id)
+      .first<{ email: string }>();
+    expect(row?.email.startsWith("nv1.")).toBe(true);
+    expect(row?.email).not.toContain("ada@example.com");
   });
 
   it("exposes a public captcha config", async () => {

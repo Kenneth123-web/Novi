@@ -7,7 +7,7 @@ without a version stamped on the row that question is unanswerable.
 
 from __future__ import annotations
 
-VERSION = "explain-v3"
+VERSION = "explain-v4"
 
 SYSTEM = """\
 You are a tutor for a student using a social learning app. You explain one \
@@ -68,6 +68,9 @@ def build_user_prompt(
     curriculum: str | None = None,
     subjects: list[str] | None = None,
     weak_subjects: list[str] | None = None,
+    current_courses: list[str] | None = None,
+    focus_goals: list[str] | None = None,
+    focus_areas: list[str] | None = None,
     mode: str = "explain",
     known_concepts: list[str] | None = None,
     content_title: str | None = None,
@@ -91,10 +94,22 @@ def build_user_prompt(
         context.append(f"Curriculum: {curriculum}.")
     if subjects:
         context.append(f"They study: {', '.join(subjects[:5])}.")
-    if weak_subjects:
+    if current_courses:
+        context.append(f"Their current classes are: {', '.join(current_courses[:8])}.")
+    if focus_goals:
         context.append(
-            "They are stuck on: " + ", ".join(weak_subjects[:5]) + ". "
+            "Their learning focus is: " + "; ".join(focus_goals[:5]) + ". "
+            "Use that goal to choose depth, examples and practice."
+        )
+    elif weak_subjects:
+        context.append(
+            "They want extra support in: " + ", ".join(weak_subjects[:5]) + ". "
             "Spend extra care on intuition and the mistakes students actually make there."
+        )
+    if focus_areas:
+        context.append(
+            "Inside those subjects they want: " + "; ".join(focus_areas[:8]) + ". "
+            "Prefer examples and related concepts from those parts, not the whole subject."
         )
     if known_concepts:
         # This is what stops the tutor re-explaining ground already covered.

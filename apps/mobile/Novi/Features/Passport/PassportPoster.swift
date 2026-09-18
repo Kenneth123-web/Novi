@@ -30,6 +30,9 @@ struct PassportPoster: View {
             cover
 
             VStack(alignment: .leading, spacing: NV.Space.xl) {
+                if let curriculum = passport.curriculum, !passport.courseMap.isEmpty {
+                    courseMap(curriculum)
+                }
                 if !passport.stamps.isEmpty { stamps }
                 if !passport.subjectCards.isEmpty { subjects }
                 footer
@@ -102,6 +105,45 @@ struct PassportPoster: View {
                 .foregroundStyle(.white.opacity(0.5))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func courseMap(_ curriculum: PassportCurriculumContextDTO) -> some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            posterHeading(
+                curriculum.gradeLabel,
+                "\(passport.courseMap.filter(\.isCurrent).count) current · \(passport.courseMap.filter(\.isFocus).count) focus"
+            )
+            VStack(spacing: NV.Space.s) {
+                ForEach(passport.courseMap) { course in
+                    HStack(alignment: .top, spacing: NV.Space.m) {
+                        Image(systemName: course.icon)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(NV.spark)
+                            .frame(width: 22)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(course.subjectName)
+                                .font(NV.font(13, .medium))
+                                .foregroundStyle(NV.inkTertiary)
+                            Text(course.name)
+                                .font(NV.font(18, .semibold))
+                                .foregroundStyle(NV.ink)
+                            Text(course.section.title)
+                                .font(NV.font(12, .medium))
+                                .foregroundStyle(course.isFocus ? NV.spark : NV.inkTertiary)
+                        }
+                        Spacer(minLength: 0)
+                        Text(course.statusLabel)
+                            .font(NV.font(13, .medium))
+                            .foregroundStyle(NV.inkTertiary)
+                    }
+                    .padding(NV.Space.m)
+                    .background(
+                        NV.surface,
+                        in: RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous)
+                    )
+                }
+            }
+        }
     }
 
     private var stamps: some View {

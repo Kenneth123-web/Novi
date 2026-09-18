@@ -29,6 +29,9 @@ struct ProfileDTO: Decodable, Equatable {
     let subjectOrder: [String]
     let subjectInterests: [String: Double]
     let weakSubjects: [String]
+    let currentCourses: [CurrentCourseSelectionDTO]
+    let focusGoals: [String: String]
+    let focusAreas: [String: [String]]
     let learningPreferences: [String]
     let goals: [String]
     let language: String
@@ -313,6 +316,8 @@ struct PassportDTO: Decodable {
     let subjects: Int
     let projects: Int
     let sessions: Int
+    let curriculum: PassportCurriculumContextDTO?
+    let courseMap: [PassportCourseDTO]
     let subjectCards: [PassportSubjectDTO]
     let stamps: [PassportStampDTO]
 }
@@ -371,6 +376,10 @@ struct LoginBody: Encodable {
 
 struct DevSkipBody: Encodable {
     var secret: String = ""
+    /// Scopes the developer account to this install. Empty falls back to the
+    /// shared row the API still accepts, which is what a test that does not
+    /// care about identity should send.
+    var deviceId: String = InstallIdentity.current.id
 }
 
 struct RefreshBody: Encodable {
