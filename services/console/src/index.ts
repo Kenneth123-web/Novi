@@ -15,10 +15,21 @@
  */
 
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { "content-type": "application/json", ...headers },
-  });
+  return withSecurityHeaders(
+    new Response(JSON.stringify(data), {
+      status,
+      headers: { "content-type": "application/json", ...headers },
+    }),
+  );
+}
+
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  return new Response(response.body, { status: response.status, headers });
 }
 
 function err(status: number, code: string, message: string): Response {
@@ -41,6 +52,103 @@ async function secretMatches(presented: string, expected: string): Promise<boole
     crypto.subtle.digest("SHA-256", encoder.encode(expected)),
   ]);
   return crypto.subtle.timingSafeEqual(a, b);
+}
+
+const AT_REST = "nv1.";
+
+async function fieldKey(secret: string): Promise<CryptoKey> {
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`novi-at-rest-v1:${secret}`),
+  );
+  return crypto.subtle.importKey("raw", hash, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+function bytesToB64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function b64urlToBytes(value: string): Uint8Array {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+  const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+  const bin = atob(padded + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function sealField(plain: string, secret: string): Promise<string> {
+  if (!plain || !secret || plain.startsWith(AT_REST)) return plain;
+  try {
+    const key = await fieldKey(secret);
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const sealed = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode("novi-v1") },
+        key,
+        new TextEncoder().encode(plain),
+      ),
+    );
+    const packed = new Uint8Array(nonce.length + sealed.length);
+    packed.set(nonce);
+    packed.set(sealed, nonce.length);
+    return AT_REST + bytesToB64url(packed);
+  } catch {
+    return plain;
+  }
+}
+
+async function openField(value: string, secret: string): Promise<string> {
+  if (!value || !value.startsWith(AT_REST) || !secret) return value;
+  try {
+    const key = await fieldKey(secret);
+    const packed = b64urlToBytes(value.slice(AT_REST.length));
+    const opened = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: packed.slice(0, 12),
+        additionalData: new TextEncoder().encode("novi-v1"),
+      },
+      key,
+      packed.slice(12),
+    );
+    return new TextDecoder().decode(opened);
+  } catch {
+    return "";
+  }
+}
+
+async function emailBlindIndex(email: string, secret: string): Promise<string> {
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const sig = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`email:${email.trim().toLowerCase()}`),
+  );
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function looksLikeEmail(q: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(q);
+}
+
+type UserRow = Record<string, unknown> & {
+  email?: string;
+  email_hash?: string;
+  user_agent?: string;
+};
+
+async function revealUser(row: UserRow, secret: string): Promise<UserRow> {
+  const { email_hash: _dropped, ...rest } = row;
+  return { ...rest, email: await openField(String(row.email ?? ""), secret) };
 }
 
 function nowIso(): string {
@@ -111,14 +219,20 @@ async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
   const created = body.created_at || at;
   const event = body.event || "logged_in";
   const isLogin = event === "logged_in" || event === "dev_skipped";
+  const secret = env.CONSOLE_ORIGIN_SECRET;
+  const email = String(body.email).toLowerCase();
+  const sealedEmail = await sealField(email, secret);
+  const emailHash = await emailBlindIndex(email, secret);
+  const sealedAgent = await sealField((body.user_agent || "").slice(0, 255), secret);
   await env.DB.batch([
     env.DB.prepare(
       `INSERT INTO users (
-         id, email, username, display_name, is_active, is_admin, source,
+         id, email, email_hash, username, display_name, is_active, is_admin, source,
          created_at, last_seen_at, last_login_at, login_count
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET
          email = excluded.email,
+         email_hash = excluded.email_hash,
          username = excluded.username,
          display_name = excluded.display_name,
          last_seen_at = excluded.last_seen_at,
@@ -126,7 +240,8 @@ async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
          login_count = users.login_count + excluded.login_count`,
     ).bind(
       body.id,
-      String(body.email).toLowerCase(),
+      sealedEmail,
+      emailHash,
       body.username,
       body.display_name ?? "",
       body.is_active === false ? 0 : 1,
@@ -140,10 +255,10 @@ async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
     env.DB.prepare(
       `INSERT INTO login_events (user_id, event, source, user_agent, created_at)
        VALUES (?, ?, ?, ?, ?)`,
-    ).bind(body.id, event, body.source || "", (body.user_agent || "").slice(0, 255), at),
+    ).bind(body.id, event, body.source || "", sealedAgent, at),
   ]);
   log("console_account_ingested", { user_id: body.id, kind: event });
-  return new Response(null, { status: 204 });
+  return withSecurityHeaders(new Response(null, { status: 204 }));
 }
 
 type UsageBody = {
@@ -183,7 +298,7 @@ async function ingestUsage(env: Env, body: UsageBody): Promise<Response> {
       nowIso(),
     )
     .run();
-  return new Response(null, { status: 204 });
+  return withSecurityHeaders(new Response(null, { status: 204 }));
 }
 
 async function userStatus(env: Env, id: string): Promise<Response> {
@@ -364,10 +479,17 @@ async function adminUsers(url: URL, env: Env): Promise<Response> {
   const limit = Math.min(Number(url.searchParams.get("limit")) || 50, 200);
   const offset = Math.max(Number(url.searchParams.get("offset")) || 0, 0);
   const like = `%${q.replaceAll("%", "")}%`;
+  const exactEmail = looksLikeEmail(q);
   const where = q
-    ? "WHERE email LIKE ? OR username LIKE ? OR display_name LIKE ? OR id = ?"
+    ? exactEmail
+      ? "WHERE email LIKE ? OR username LIKE ? OR display_name LIKE ? OR id = ? OR email_hash = ?"
+      : "WHERE email LIKE ? OR username LIKE ? OR display_name LIKE ? OR id = ?"
     : "";
-  const binds = q ? [like, like, like, q] : [];
+  const binds = q
+    ? exactEmail
+      ? [like, like, like, q, await emailBlindIndex(q, env.CONSOLE_ORIGIN_SECRET)]
+      : [like, like, like, q]
+    : [];
   const [rows, total] = await Promise.all([
     env.DB.prepare(
       `SELECT * FROM users ${where} ORDER BY datetime(created_at) DESC LIMIT ? OFFSET ?`,
@@ -378,7 +500,10 @@ async function adminUsers(url: URL, env: Env): Promise<Response> {
       .bind(...binds)
       .first<{ n: number }>(),
   ]);
-  return json({ users: rows.results, total: total?.n ?? 0, limit, offset });
+  const users = await Promise.all(
+    (rows.results as UserRow[]).map((row) => revealUser(row, env.CONSOLE_ORIGIN_SECRET)),
+  );
+  return json({ users, total: total?.n ?? 0, limit, offset });
 }
 
 async function adminUser(env: Env, id: string): Promise<Response> {
@@ -406,9 +531,16 @@ async function adminUser(env: Env, id: string): Promise<Response> {
       .bind(id)
       .all(),
   ]);
+  const revealed = await revealUser(user as UserRow, env.CONSOLE_ORIGIN_SECRET);
+  const loginEvents = await Promise.all(
+    (events.results as UserRow[]).map(async (row) => ({
+      ...row,
+      user_agent: await openField(String(row.user_agent ?? ""), env.CONSOLE_ORIGIN_SECRET),
+    })),
+  );
   return json({
-    user,
-    login_events: events.results,
+    user: revealed,
+    login_events: loginEvents,
     usage: usage ?? { n: 0, ai: 0, input_tokens: 0, output_tokens: 0 },
     top_paths: ai.results,
   });

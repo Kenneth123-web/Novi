@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from novi.core.crypto import EncryptedJSON
 from novi.models.base import Base, TimestampMixin, uuid_pk
 
 PLATFORMS = (
@@ -160,8 +161,8 @@ class Discussion(Base, TimestampMixin):
 
     # Filled lazily by the AI layer and cached: both are expensive and neither
     # changes once the thread is fetched.
-    translation: Mapped[dict | None] = mapped_column(JSONB)
-    summary: Mapped[dict | None] = mapped_column(JSONB)
+    translation: Mapped[dict | None] = mapped_column(EncryptedJSON)
+    summary: Mapped[dict | None] = mapped_column(EncryptedJSON)
 
     comments_: Mapped[list[DiscussionComment]] = relationship(
         back_populates="discussion", cascade="all, delete-orphan", lazy="selectin"

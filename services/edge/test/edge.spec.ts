@@ -116,6 +116,19 @@ describe("cache", () => {
     const second = await run(ask({ model: "m", temperature: 0, messages: [{ role: "user", content: "why" }] }));
     expect(second.headers.get("x-novi-edge")).toBe("hit");
     expect(fetchSpy).toHaveBeenCalledOnce();
+    expect(await second.text()).toContain("summary");
+  });
+
+  it("stores cache entries as ciphertext, not the provider body", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(providerOK());
+    await run(ask({ model: "m", temperature: 0, messages: [{ role: "user", content: "why" }] }));
+
+    const keys = await env.EDGE_KV.list();
+    const cached = keys.keys.find((k) => k.name.startsWith("ai:"));
+    expect(cached).toBeTruthy();
+    const stored = await env.EDGE_KV.get(cached!.name);
+    expect(stored?.startsWith("nv1.")).toBe(true);
+    expect(stored).not.toContain("summary");
   });
 
   it("does not let a different prompt hit another prompt's entry", async () => {

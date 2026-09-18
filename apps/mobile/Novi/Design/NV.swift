@@ -76,6 +76,20 @@ enum NV {
 
     // MARK: Metrics
 
+    /// The window's width in points.
+    ///
+    /// Read, not assumed. The app runs portrait-only on iPhone, so this is
+    /// constant for the process — but it spans 320pt (SE) to 440pt (Pro Max),
+    /// which is a 38% range, and a margin that is generous on a Pro Max is a
+    /// sixth of an SE's screen.
+    static var screenWidth: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+        let window = scenes.compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+        return window?.bounds.width ?? UIScreen.main.bounds.width
+    }
+
     /// Two densities, on purpose.
     ///
     /// ARRIVAL screens — launch, sign-in, onboarding, the passport cover —
@@ -85,8 +99,18 @@ enum NV {
     /// to the gutter and the card title falls a step. Rednote's grid is the
     /// reference for the second number: at a 21pt margin a two-column feed
     /// wastes about a sixth of the screen on nothing.
-    static let pageMargin: CGFloat = 21
-    static let gutter: CGFloat = 8
+    ///
+    /// Both step down on a narrow phone rather than being one fixed number:
+    /// 21pt of margin either side of a 320pt SE leaves less room for content
+    /// than the same margin leaves on the phone it was designed on.
+    static var pageMargin: CGFloat { screenWidth < 390 ? 17 : 21 }
+    static var gutter: CGFloat { screenWidth < 390 ? 7 : 8 }
+
+    /// How many masonry columns fit without a column going below the width a
+    /// two-line CJK title needs. Every current iPhone answers 2.
+    static func feedColumns(for width: CGFloat) -> Int {
+        max(2, Int(width / 210))
+    }
 
     /// The tab bar is drawn as an overlay above the tab content, so anything a
     /// screen pins to the bottom edge has to clear it explicitly. Defined once
@@ -149,8 +173,47 @@ enum NV {
         typeBase * pow(phi, step / 6)
     }
 
+    /// The system text style a given size behaves like.
+    ///
+    /// A custom face gets no Dynamic Type for free, and pinning the whole
+    /// ramp to one style is worse than none: `.body` metrics applied to a
+    /// 54pt wordmark grow it off the screen. Matching each size to the style
+    /// Apple scales at the same rate keeps the hierarchy intact as the
+    /// learner's text size moves.
+    static func textStyle(for size: CGFloat) -> Font.TextStyle {
+        switch size {
+        case ..<11.5: return .caption2
+        case ..<13.5: return .caption
+        case ..<14.5: return .footnote
+        case ..<16: return .subheadline
+        case ..<19: return .body
+        case ..<22: return .title3
+        case ..<28: return .title2
+        case ..<36: return .title
+        default: return .largeTitle
+        }
+    }
+
     static func font(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
-        .custom(family, size: size).weight(weight)
+        .custom(family, size: size, relativeTo: textStyle(for: size)).weight(weight)
+    }
+
+    /// The same face and size as `font(_:_:)`, as a `UIFont` scaled for a
+    /// given Dynamic Type setting.
+    ///
+    /// The masonry has to know how tall a card will be before it places it,
+    /// so the measurement and the drawing must agree exactly — including on
+    /// how much the learner's text size has grown them.
+    static func uiFont(
+        _ size: CGFloat, _ weight: UIFont.Weight = .regular, typeSize: DynamicTypeSize = .large
+    ) -> UIFont {
+        let base = UIFont(name: family, size: size)?.withWeight(weight)
+            ?? UIFont.systemFont(ofSize: size, weight: weight)
+        let metrics = UIFontMetrics(forTextStyle: textStyle(for: size).uiKit)
+        return metrics.scaledFont(
+            for: base,
+            compatibleWith: UITraitCollection(preferredContentSizeCategory: typeSize.uiKit)
+        )
     }
 
     /// A step on the scale, as a font.
@@ -190,6 +253,59 @@ enum NV {
 }
 
 // MARK: - Primitives
+
+extension Font.TextStyle {
+    var uiKit: UIFont.TextStyle {
+        switch self {
+        case .largeTitle: return .largeTitle
+        case .title: return .title1
+        case .title2: return .title2
+        case .title3: return .title3
+        case .headline: return .headline
+        case .subheadline: return .subheadline
+        case .callout: return .callout
+        case .footnote: return .footnote
+        case .caption: return .caption1
+        case .caption2: return .caption2
+        default: return .body
+        }
+    }
+}
+
+extension DynamicTypeSize {
+    var uiKit: UIContentSizeCategory {
+        switch self {
+        case .xSmall: return .extraSmall
+        case .small: return .small
+        case .medium: return .medium
+        case .large: return .large
+        case .xLarge: return .extraLarge
+        case .xxLarge: return .extraExtraLarge
+        case .xxxLarge: return .extraExtraExtraLarge
+        case .accessibility1: return .accessibilityMedium
+        case .accessibility2: return .accessibilityLarge
+        case .accessibility3: return .accessibilityExtraLarge
+        case .accessibility4: return .accessibilityExtraExtraLarge
+        case .accessibility5: return .accessibilityExtraExtraExtraLarge
+        @unknown default: return .large
+        }
+    }
+}
+
+extension UIFont {
+    /// A weighted variant of a named face.
+    ///
+    /// `UIFont(name:size:)` always returns the regular cut, and the feed card
+    /// draws its title at medium — a measurement taken against regular comes
+    /// out narrow, which is exactly the kind of small error that shows up as
+    /// a masonry column stepping half a line out of alignment.
+    func withWeight(_ weight: UIFont.Weight) -> UIFont {
+        let descriptor = fontDescriptor.addingAttributes([
+            .traits: [UIFontDescriptor.TraitKey.weight: weight]
+        ])
+        return UIFont(descriptor: descriptor, size: pointSize)
+    }
+}
 
 extension Color {
     init(hex: UInt32, alpha: Double = 1) {

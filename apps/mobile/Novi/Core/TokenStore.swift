@@ -11,6 +11,64 @@ import Security
 /// `AfterFirstUnlockThisDeviceOnly` — "after first unlock" so a background
 /// refresh works with the screen locked, "this device only" so the token is
 /// not restored onto a different phone from an iCloud backup.
+enum Keychain {
+    private static let log = Logger(subsystem: "luke.novi.app", category: "keychain")
+
+    static func read(service: String, account: String) -> Data? {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var item: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess else { return nil }
+        return item as? Data
+    }
+
+    /// Returns false when the value was NOT persisted.
+    ///
+    /// Every failure is logged with its OSStatus. This returned `false`
+    /// silently once already — an unsigned simulator build has no keychain
+    /// entitlement, so every write failed and the app asked the user to sign
+    /// in again on every launch, with nothing anywhere saying why.
+    @discardableResult
+    static func write(_ data: Data, service: String, account: String) -> Bool {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ]
+        let attributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        // Update-then-add, not delete-then-add: deleting first leaves a window
+        // where a concurrent read finds nothing and signs the user out.
+        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return true }
+        if status != errSecItemNotFound {
+            log.error("keychain update failed: \(status)")
+            return false
+        }
+        let added = SecItemAdd(query.merging(attributes) { a, _ in a } as CFDictionary, nil)
+        if added != errSecSuccess {
+            log.error("keychain add failed: \(added)")
+            return false
+        }
+        return true
+    }
+
+    static func delete(service: String, account: String) {
+        SecItemDelete([
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+        ] as CFDictionary)
+    }
+}
+
 struct TokenStore {
     private let service: String
     private let account = "novi.session"
@@ -32,61 +90,18 @@ struct TokenStore {
     }
 
     func load() -> Stored? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data
-        else { return nil }
+        guard let data = Keychain.read(service: service, account: account) else { return nil }
         return try? JSONDecoder().decode(Stored.self, from: data)
     }
 
-    private static let log = Logger(subsystem: "luke.novi.app", category: "keychain")
-
     /// Returns false when the credential was NOT persisted.
-    ///
-    /// Every failure is logged with its OSStatus. This returned `false`
-    /// silently once already — an unsigned simulator build has no keychain
-    /// entitlement, so every write failed and the app asked the user to sign
-    /// in again on every launch, with nothing anywhere saying why.
     @discardableResult
     func save(_ stored: Stored) -> Bool {
         guard let data = try? JSONEncoder().encode(stored) else { return false }
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-        let attributes: [String: Any] = [
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-        // Update-then-add, not delete-then-add: deleting first leaves a window
-        // where a concurrent read finds nothing and signs the user out.
-        let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
-        if status == errSecSuccess { return true }
-        if status != errSecItemNotFound {
-            Self.log.error("keychain update failed: \(status)")
-            return false
-        }
-        let added = SecItemAdd(query.merging(attributes) { a, _ in a } as CFDictionary, nil)
-        if added != errSecSuccess {
-            Self.log.error("keychain add failed: \(added)")
-            return false
-        }
-        return true
+        return Keychain.write(data, service: service, account: account)
     }
 
     func clear() {
-        SecItemDelete([
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ] as CFDictionary)
+        Keychain.delete(service: service, account: account)
     }
 }

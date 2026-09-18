@@ -22,6 +22,11 @@ enum Demo {
     /// the auth screen cannot be reached at all.
     static var resetSession: Bool { d.bool(forKey: "demoResetSession") }
 
+    /// `-demoFreshInstall YES` — behave as if the app had just been installed
+    /// for the first time: new install id, purged keychain, questionnaire.
+    /// Uninstalling does the same thing, but not in a scripted screenshot run.
+    static var freshInstall: Bool { d.bool(forKey: "demoFreshInstall") }
+
     /// `-demoEmail a@b.c -demoPassword ...` — sign in on launch against the
     /// real API. Not a fake phase override: a screenshot of a state the server
     /// cannot actually produce is not evidence of anything.

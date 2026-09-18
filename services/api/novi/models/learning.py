@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from novi.core.crypto import EncryptedJSON, EncryptedText
 from novi.models.base import Base, TimestampMixin, uuid_pk
 
 INTERACTION_TYPES = (
@@ -149,7 +150,7 @@ class Question(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    text_: Mapped[str] = mapped_column("text", Text, nullable=False)
+    text_: Mapped[str] = mapped_column("text", EncryptedText, nullable=False)
     mode: Mapped[str] = mapped_column(String(24), nullable=False, default="explain")
     # Where the question came from, if it came from somewhere.
     content_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -182,7 +183,7 @@ class AIResponse(Base):
     question_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("questions.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
     )
-    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    payload: Mapped[dict] = mapped_column(EncryptedJSON, nullable=False, default=dict)
     model: Mapped[str] = mapped_column(String(80), nullable=False, default="")
     prompt_version: Mapped[str] = mapped_column(String(24), nullable=False, default="")
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

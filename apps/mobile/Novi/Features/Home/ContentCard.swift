@@ -2,13 +2,24 @@ import SwiftUI
 
 /// A card in the masonry.
 ///
-/// `height(for:width:)` MUST agree with what `body` actually draws. Measured
-/// taller than drawn and the column shows a gap; shorter and the two columns
-/// drift out of alignment as you scroll. Change one and you change the other.
+/// `height(for:width:typeSize:)` MUST agree with what `body` actually draws.
+/// Measured taller than drawn and the column shows a gap; shorter and the two
+/// columns drift out of alignment as you scroll. Change one and you change
+/// the other.
 struct ContentCard: View {
     let item: FeedItemDTO
+    /// The column's width, handed down by the masonry.
+    ///
+    /// The card is sized from this rather than from its cover. A remote
+    /// thumbnail drawn with `scaledToFill` reports the image's own pixel
+    /// width as its ideal size, and `frame(maxWidth: .infinity)` grows to
+    /// whichever is larger — so a 480px cover made a 198pt card 480pt wide
+    /// and hung both columns off the edges of the screen.
+    let width: CGFloat
     var onOpen: () -> Void
     var onSave: () -> Void
+
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     private var content: ContentDTO { item.content }
 
@@ -31,6 +42,7 @@ struct ContentCard: View {
                 .padding(.top, NV.Space.s)
                 .padding(.bottom, 9)
             }
+            .frame(width: width)
             .background(NV.surface)
             .clipShape(RoundedRectangle(cornerRadius: NV.Radius.card, style: .continuous))
             // Two shadows, not one. A single soft shadow reads as blur; a
@@ -44,8 +56,7 @@ struct ContentCard: View {
 
     private var cover: some View {
         RemoteCover(url: content.thumbnailUrl, seed: content.coverSeed)
-            .aspectRatio(content.thumbnailRatio, contentMode: .fill)
-            .frame(maxWidth: .infinity)
+            .frame(width: width, height: Self.coverHeight(for: item, width: width))
             .clipped()
             .overlay(alignment: .topLeading) {
                 HStack(spacing: 4) {
@@ -102,51 +113,42 @@ struct ContentCard: View {
 
     // MARK: Height
 
+    /// The cover's drawn height. Shared with the estimator so the two cannot
+    /// disagree, and clamped so a malformed ratio cannot produce a card taller
+    /// than the screen.
+    static func coverHeight(for item: FeedItemDTO, width: CGFloat) -> CGFloat {
+        let ratio = CGFloat(item.content.thumbnailRatio)
+        return (width / min(3, max(0.5, ratio))).rounded()
+    }
+
     /// The masonry places a card before it can measure one, so the estimate
     /// has to be computed rather than observed.
-    static func height(for item: FeedItemDTO, width: CGFloat) -> CGFloat {
-        let content = item.content
-        let cover = width / max(0.4, CGFloat(content.thumbnailRatio))
-
+    static func height(
+        for item: FeedItemDTO, width: CGFloat, typeSize: DynamicTypeSize = .large
+    ) -> CGFloat {
         // Title lines via boundingRect, not characters ÷ width. Mixed Latin,
         // CJK and digits have no single character width, and being wrong by
         // one line is a visible step in the column.
         //
-        // The size and the family both come from the same place the card
-        // draws with. This measured the SYSTEM font at a hardcoded 14.5 while
-        // the card rendered Instrument Sans at 13.84 — two different faces at
-        // two different sizes, so every estimate was wrong by a little and
-        // the columns drifted.
+        // The face, the size AND the Dynamic Type scaling all come from the
+        // same place the card draws with. This measured the SYSTEM font at a
+        // hardcoded 14.5 while the card rendered Instrument Sans at 13.84 —
+        // two different faces at two different sizes, so every estimate was
+        // wrong by a little and the columns drifted.
         let titleWidth = width - NV.Space.s * 2
-        let font = UIFont(name: "Instrument Sans", size: NV.cardTitleSize)?
-            .withWeight(.medium)
-            ?? UIFont.systemFont(ofSize: NV.cardTitleSize, weight: .medium)
-        let bounds = (content.title as NSString).boundingRect(
+        let font = NV.uiFont(NV.cardTitleSize, .medium, typeSize: typeSize)
+        let bounds = (item.content.title as NSString).boundingRect(
             with: CGSize(width: titleWidth, height: .greatestFiniteMagnitude),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: [.font: font],
             context: nil
         )
-        let lineHeight = font.lineHeight
-        let lines = min(2, max(1, Int(ceil(bounds.height / lineHeight))))
+        let lineHeight = font.lineHeight + 1  // .lineSpacing(1) on the Text
+        let lines = min(2, max(1, Int(ceil(bounds.height / font.lineHeight))))
+        let footer = max(15, NV.uiFont(NV.size(-4), .regular, typeSize: typeSize).lineHeight)
 
-        //  8 top + title + 6 gap + 15 footer + 9 bottom
-        return cover + NV.Space.s + lineHeight * CGFloat(lines) + 6 + 15 + 9
-    }
-}
-
-
-private extension UIFont {
-    /// A weighted variant of a named face.
-    ///
-    /// `UIFont(name:size:)` always returns the regular cut, and the card draws
-    /// its title at medium — a measurement taken against regular comes out
-    /// narrow, which is exactly the kind of small error that shows up as a
-    /// column stepping half a line out of alignment.
-    func withWeight(_ weight: UIFont.Weight) -> UIFont {
-        let descriptor = fontDescriptor.addingAttributes([
-            .traits: [UIFontDescriptor.TraitKey.weight: weight]
-        ])
-        return UIFont(descriptor: descriptor, size: pointSize)
+        //  8 top + title + 6 gap + footer + 9 bottom
+        return coverHeight(for: item, width: width)
+            + NV.Space.s + lineHeight * CGFloat(lines) + 6 + footer + 9
     }
 }

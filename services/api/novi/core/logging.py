@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sys
 import time
 import uuid
@@ -65,6 +66,7 @@ def get_logger(name: str) -> logging.Logger:
 
 
 _access = get_logger("novi.access")
+_REQUEST_ID_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
 
 _USAGE_SKIP = (
     "/health",
@@ -83,7 +85,9 @@ def _skip_usage(path: str) -> bool:
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        rid = request.headers.get("x-request-id") or uuid.uuid4().hex[:16]
+        rid = request.headers.get("x-request-id") or ""
+        if not _REQUEST_ID_RE.fullmatch(rid):
+            rid = uuid.uuid4().hex[:16]
         rid_token = request_id_var.set(rid)
         uid_token = user_id_var.set(None)
         started = time.perf_counter()

@@ -37,15 +37,13 @@ _buckets: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
 def client_ip(request: Request) -> str:
     """The connecting address, not a client-supplied X-Forwarded-For.
 
-    A raw X-Forwarded-For is trivial to spoof and would mint a fresh bucket
-    per request. Cloudflare's CF-Connecting-IP is set by the edge; in
-    production, if that is missing, the leftmost forwarded hop is the next
-    best thing. Locally we use the socket peer.
+    Those headers are trivial to spoof unless this process sits behind
+    Cloudflare. TRUST_CLOUDFLARE=true is what opts into CF-Connecting-IP.
     """
-    cf = request.headers.get("cf-connecting-ip")
-    if cf:
-        return cf.strip()
-    if get_settings().is_production:
+    if get_settings().trust_cloudflare:
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.strip()
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
             return forwarded.split(",")[0].strip()

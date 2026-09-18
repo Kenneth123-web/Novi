@@ -23,4 +23,13 @@ final class APIErrorTests: XCTestCase {
         XCTAssertFalse(error.isTimeout)
         XCTAssertTrue(error.message.contains("127.0.0.1"))
     }
+
+    func testDevSkipSendsTheInstallId() throws {
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder.novi.encode(DevSkipBody(deviceId: "install-one"))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(json["device_id"] as? String, "install-one")
+    }
 }

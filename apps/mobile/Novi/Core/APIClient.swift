@@ -35,7 +35,7 @@ actor APIClient {
             urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
             urls.append(URL(string: "http://localhost:8000/v1")!)
             #else
-            for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL"] {
+            for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL", "NOVAPITunnelURL"] {
                 if let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String {
                     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
                     if let url = URL(string: trimmed), !trimmed.isEmpty {
@@ -304,12 +304,10 @@ actor APIClient {
 
     private func resolveBaseURL() async throws {
         if resolved { return }
-        for url in candidates {
-            if await ping(url) {
-                baseURL = url
-                resolved = true
-                return
-            }
+        if let url = await firstReachable() {
+            baseURL = url
+            resolved = true
+            return
         }
         throw APIError.transport(
             URLError(.cannotConnectToHost),
@@ -317,14 +315,39 @@ actor APIClient {
         )
     }
 
-    private func ping(_ base: URL) async -> Bool {
+    /// Probe every candidate together. Sequential pings used to spend 4s on a
+    /// dead LAN IP before even trying USB, Bonjour or the HTTPS tunnel, which
+    /// is how a leftover content filter made Skip look like a timeout.
+    private func firstReachable() async -> URL? {
+        let session = shortSession
+        let urls = candidates
+        return await withTaskGroup(of: (Int, URL)?.self) { group in
+            for (index, url) in urls.enumerated() {
+                group.addTask {
+                    await Self.ping(url, session: session) ? (index, url) : nil
+                }
+            }
+            var winner: (Int, URL)?
+            for await result in group {
+                guard let result else { continue }
+                if winner == nil || result.0 < winner!.0 { winner = result }
+                if result.0 == 0 {
+                    group.cancelAll()
+                    return result.1
+                }
+            }
+            return winner?.1
+        }
+    }
+
+    nonisolated private static func ping(_ base: URL, session: URLSession) async -> Bool {
         var request = URLRequest(url: base.appending(path: "health"))
         request.httpMethod = "GET"
-        request.timeoutInterval = 1.5
+        request.timeoutInterval = 4
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         do {
-            let (data, response) = try await Self.timedData(
-                using: shortSession, for: request, timeout: 1.5
+            let (data, response) = try await timedData(
+                using: session, for: request, timeout: 4
             )
             guard (response as? HTTPURLResponse)?.statusCode == 200 else { return false }
             guard let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {

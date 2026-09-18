@@ -376,6 +376,10 @@ struct LoginBody: Encodable {
 
 struct DevSkipBody: Encodable {
     var secret: String = ""
+    /// Scopes the developer account to this install. Empty falls back to the
+    /// shared row the API still accepts, which is what a test that does not
+    /// care about identity should send.
+    var deviceId: String = InstallIdentity.current.id
 }
 
 struct RefreshBody: Encodable {

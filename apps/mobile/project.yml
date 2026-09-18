@@ -40,15 +40,23 @@ targets:
         # in code but missing from this list silently falls back to the system
         # font and the whole type ramp shifts.
         UIAppFonts: [InstrumentSans.ttf]
-        # Loopback only. A blanket NSAllowsArbitraryLoads would ship as "this
-        # app accepts any plaintext HTTP", which is both a review question and
-        # untrue: every other host it talks to is HTTPS.
+        # Loopback, Bonjour (.local) and RFC1918 LAN. A blanket
+        # NSAllowsArbitraryLoads would ship as "this app accepts any plaintext
+        # HTTP", which is both a review question and untrue: every other host
+        # it talks to is HTTPS. NSAllowsLocalNetworking covers 172.16/12, but
+        # iOS still needs an exception for the .local hostname.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
           NSExceptionDomains:
             localhost:
               NSExceptionAllowsInsecureHTTPLoads: true
             127.0.0.1:
+              NSExceptionAllowsInsecureHTTPLoads: true
+            local:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
+            trycloudflare.com:
+              NSIncludesSubdomains: true
               NSExceptionAllowsInsecureHTTPLoads: true
         # Device builds talk to the Mac over the LAN. Without this string
         # iOS never prompts, and HTTP to the host IP fails closed.
@@ -58,6 +66,10 @@ targets:
         NOVAPIBaseURL: $(NOV_API_BASE_URL)
         NOVAPIUsbURL: $(NOV_API_USB_URL)
         NOVAPIHostURL: $(NOV_API_HOST_URL)
+        # HTTPS trycloudflare fallback written by `./scripts/dev.sh api`.
+        # LAN is preferred; this only wins when Wi-Fi isolation or a leftover
+        # content filter drops inbound TCP to the Mac.
+        NOVAPITunnelURL: $(NOV_API_TUNNEL_URL)
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: luke.novi.app

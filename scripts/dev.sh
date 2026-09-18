@@ -49,7 +49,78 @@ cmd_setup() {
 
 cmd_migrate() { .venv/bin/alembic -c database/alembic.ini upgrade head; }
 cmd_seed()    { $PY -m database.seeds.seed; }
-cmd_api()     { .venv/bin/uvicorn novi.main:app --reload --host 0.0.0.0 --port 8000; }
+
+# xcconfig treats `//` as a comment, so `http://host` is written `http:/$()/host`.
+xc_url() { python3 -c 'import sys; print(sys.argv[1].replace("://", ":/$()/", 1))' "$1"; }
+
+set_xc() {
+  python3 - "$ROOT/apps/mobile/Configs/Local.xcconfig" "$1" "$2" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+path, key, value = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+text = path.read_text() if path.exists() else (
+    "// Gitignored. Device URLs are filled by ./scripts/dev.sh api.\n"
+    "DEVELOPMENT_TEAM =\n"
+)
+line = f"{key} = {value}"
+pat = re.compile(rf"^{re.escape(key)}\s*=.*$", re.M)
+if pat.search(text):
+    text = pat.sub(line, text)
+else:
+    if text and not text.endswith("\n"):
+        text += "\n"
+    text += line + "\n"
+path.parent.mkdir(parents=True, exist_ok=True)
+path.write_text(text)
+PY
+}
+
+sync_lan_urls() {
+  local ip usb host
+  ip=$(ipconfig getifaddr en0 2>/dev/null || true)
+  usb=$(ifconfig -a 2>/dev/null | awk '/inet 169\.254\./ { print $2; exit }')
+  host=$(scutil --get LocalHostName 2>/dev/null || true)
+  if [ -n "$ip" ]; then
+    set_xc NOV_API_BASE_URL "$(xc_url "http://${ip}:8000/v1")"
+    echo "· device API  http://${ip}:8000/v1"
+  fi
+  if [ -n "$usb" ]; then
+    set_xc NOV_API_USB_URL "$(xc_url "http://${usb}:8000/v1")"
+  fi
+  if [ -n "$host" ]; then
+    set_xc NOV_API_HOST_URL "$(xc_url "http://${host}.local:8000/v1")"
+  fi
+}
+
+start_tunnel() {
+  command -v cloudflared >/dev/null 2>&1 || return 0
+  mkdir -p "$ROOT/.run"
+  local log="$ROOT/.run/cloudflared.log"
+  cloudflared tunnel --url http://127.0.0.1:8000 --no-autoupdate >"$log" 2>&1 &
+  NOVI_TUNNEL_PID=$!
+  local url="" i
+  for i in $(seq 1 40); do
+    url=$(grep -oE 'https://[A-Za-z0-9.-]+\.trycloudflare\.com' "$log" | head -1 || true)
+    [ -n "$url" ] && break
+    sleep 0.25
+  done
+  if [ -n "$url" ]; then
+    set_xc NOV_API_TUNNEL_URL "$(xc_url "${url}/v1")"
+    echo "· tunnel      ${url}/v1  (rebuild the iOS app to pick this up)"
+  else
+    echo "· cloudflared did not print a URL yet — see $log" >&2
+  fi
+}
+
+cmd_api() {
+  sync_lan_urls
+  NOVI_TUNNEL_PID=""
+  start_tunnel
+  trap 'if [ -n "${NOVI_TUNNEL_PID:-}" ]; then kill "$NOVI_TUNNEL_PID" 2>/dev/null || true; fi' EXIT
+  .venv/bin/uvicorn novi.main:app --reload --host 0.0.0.0 --port 8000
+}
 cmd_test()    { $PY -m pytest services/api/tests "$@"; }
 
 cmd_check() {

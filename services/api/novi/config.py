@@ -44,6 +44,15 @@ class Settings(BaseSettings):
     # `secret` on POST /auth/dev-skip, in every environment.
     dev_skip_secret: str = ""
 
+    # At-rest encryption for tutor Q&A. Independent of JWT_SECRET so rotating
+    # access tokens does not lock history. Empty: derived from JWT_SECRET.
+    app_encryption_key: str = ""
+
+    # Only honour CF-Connecting-IP / X-Forwarded-For when this API actually
+    # sits behind Cloudflare. The origin is often a laptop; trusting those
+    # headers there lets a caller mint a fresh rate-limit bucket per request.
+    trust_cloudflare: bool = False
+
     # Cloudflare Turnstile. The sitekey is public (iOS + console widget).
     # Siteverify goes through the managed Worker; the secret never lives here.
     # In development/test an empty URL accepts only Cloudflare's dummy token
@@ -161,6 +170,8 @@ class Settings(BaseSettings):
             problems.append("TURNSTILE_SITEKEY must be set")
         if not self.turnstile_siteverify_url.strip():
             problems.append("TURNSTILE_SITEVERIFY_URL must be set")
+        if self.app_encryption_key and len(self.app_encryption_key) < 32:
+            problems.append("APP_ENCRYPTION_KEY must be at least 32 characters when set")
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 

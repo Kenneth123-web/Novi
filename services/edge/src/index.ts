@@ -28,7 +28,9 @@
 
 /** The provider's error shape, so the Novi backend's existing mapping works. */
 function providerError(status: number, type: string, message: string): Response {
-  return Response.json({ type: "error", error: { type, message } }, { status });
+  return withSecurityHeaders(
+    Response.json({ type: "error", error: { type, message } }, { status }),
+  );
 }
 
 /** Structured, one line, never containing a prompt or a key. */
@@ -50,6 +52,82 @@ async function secretMatches(presented: string, expected: string): Promise<boole
     crypto.subtle.digest("SHA-256", encoder.encode(expected)),
   ]);
   return crypto.subtle.timingSafeEqual(a, b);
+}
+
+const AT_REST = "nv1.";
+
+function withSecurityHeaders(response: Response): Response {
+  const headers = new Headers(response.headers);
+  headers.set("x-content-type-options", "nosniff");
+  headers.set("x-frame-options", "DENY");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("permissions-policy", "camera=(), microphone=(), geolocation=()");
+  return new Response(response.body, { status: response.status, headers });
+}
+
+async function cacheKeyMaterial(secret: string): Promise<CryptoKey> {
+  const hash = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`novi-at-rest-v1:${secret}`),
+  );
+  return crypto.subtle.importKey("raw", hash, "AES-GCM", false, ["encrypt", "decrypt"]);
+}
+
+function bytesToB64url(bytes: Uint8Array): string {
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function b64urlToBytes(value: string): Uint8Array {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+  const pad = padded.length % 4 === 0 ? "" : "=".repeat(4 - (padded.length % 4));
+  const bin = atob(padded + pad);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function sealCache(plain: string, secret: string): Promise<string> {
+  if (!plain || !secret) return plain;
+  try {
+    const key = await cacheKeyMaterial(secret);
+    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const sealed = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv: nonce, additionalData: new TextEncoder().encode("novi-v1") },
+        key,
+        new TextEncoder().encode(plain),
+      ),
+    );
+    const packed = new Uint8Array(nonce.length + sealed.length);
+    packed.set(nonce);
+    packed.set(sealed, nonce.length);
+    return AT_REST + bytesToB64url(packed);
+  } catch {
+    return plain;
+  }
+}
+
+async function openCache(value: string, secret: string): Promise<string | null> {
+  if (value === null || value === undefined) return null;
+  if (!value.startsWith(AT_REST)) return value;
+  try {
+    const key = await cacheKeyMaterial(secret);
+    const packed = b64urlToBytes(value.slice(AT_REST.length));
+    const opened = await crypto.subtle.decrypt(
+      {
+        name: "AES-GCM",
+        iv: packed.slice(0, 12),
+        additionalData: new TextEncoder().encode("novi-v1"),
+      },
+      key,
+      packed.slice(12),
+    );
+    return new TextDecoder().decode(opened);
+  } catch {
+    return null;
+  }
 }
 
 /** SHA-256 of the exact request body, hex — the cache key. */
@@ -163,11 +241,16 @@ async function handleProxy(
   if (cacheKey) {
     const hit = await env.EDGE_KV.get(cacheKey);
     if (hit !== null) {
-      log("edge_cache_hit", { model: parsed.model });
-      return new Response(hit, {
-        status: 200,
-        headers: { "content-type": "application/json", "x-novi-edge": "hit" },
-      });
+      const body = await openCache(hit, env.EDGE_SHARED_SECRET);
+      if (body !== null) {
+        log("edge_cache_hit", { model: parsed.model });
+        return withSecurityHeaders(
+          new Response(body, {
+            status: 200,
+            headers: { "content-type": "application/json", "x-novi-edge": "hit" },
+          }),
+        );
+      }
     }
   }
 
@@ -220,10 +303,12 @@ async function handleProxy(
 
   // A streamed reply is passed straight through without being buffered.
   if (parsed.stream === true) {
-    return new Response(response.body, {
-      status: response.status,
-      headers: { "content-type": response.headers.get("content-type") ?? "text/event-stream" },
-    });
+    return withSecurityHeaders(
+      new Response(response.body, {
+        status: response.status,
+        headers: { "content-type": response.headers.get("content-type") ?? "text/event-stream" },
+      }),
+    );
   }
 
   const text = await response.text();
@@ -231,17 +316,23 @@ async function handleProxy(
   // Only successful answers are cached. Caching a "rate limit exceeded" would
   // pin the outage in place for the whole TTL.
   if (cacheKey && response.ok && !text.includes('"type":"error"')) {
-    ctx.waitUntil(env.EDGE_KV.put(cacheKey, text, { expirationTtl: ttl }));
+    ctx.waitUntil(
+      sealCache(text, env.EDGE_SHARED_SECRET).then((sealed) =>
+        env.EDGE_KV.put(cacheKey, sealed, { expirationTtl: ttl }),
+      ),
+    );
   }
 
-  return new Response(text, {
-    status: response.status,
-    headers: { "content-type": "application/json", "x-novi-edge": "miss" },
-  });
+  return withSecurityHeaders(
+    new Response(text, {
+      status: response.status,
+      headers: { "content-type": "application/json", "x-novi-edge": "miss" },
+    }),
+  );
 }
 
 function handleHealth(): Response {
-  return Response.json({ status: "ok", service: "novi-edge" });
+  return withSecurityHeaders(Response.json({ status: "ok", service: "novi-edge" }));
 }
 
 export default {
