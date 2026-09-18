@@ -12,6 +12,8 @@ struct ExploreView: View {
     @EnvironmentObject private var session: AppSession
     @State private var query = ""
     @State private var results: SearchResponseDTO?
+    @State private var selectedSubject: SubjectDTO?
+    @State private var subjectConcepts: [ConceptDTO] = []
     @State private var loading = false
     @State private var error: APIError?
     @State private var path = NavigationPath()
@@ -27,9 +29,17 @@ struct ExploreView: View {
                     if loading {
                         loadingState
                     } else if let error {
-                        NVErrorNote(message: error.message, retry: { runSearch(query) })
+                        NVErrorNote(message: error.message, retry: {
+                            if let selectedSubject {
+                                browse(selectedSubject)
+                            } else {
+                                runSearch(query)
+                            }
+                        })
                     } else if let results {
                         resultsView(results)
+                    } else if let selectedSubject {
+                        subjectResults(selectedSubject)
                     } else {
                         browse
                     }
@@ -73,7 +83,16 @@ struct ExploreView: View {
                 .submitLabel(.search)
                 .autocorrectionDisabled()
                 .onSubmit { runSearch(query) }
-                .onChange(of: query) { _, new in scheduleSearch(new) }
+                .onChange(of: query) { _, new in
+                    // A typed query is a different mode from browsing a
+                    // subject. Keep the two paths separate: a subject name is
+                    // not necessarily a phrase in a concept or content row.
+                    if !new.isEmpty {
+                        selectedSubject = nil
+                        subjectConcepts = []
+                    }
+                    scheduleSearch(new)
+                }
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -98,8 +117,7 @@ struct ExploreView: View {
             FlowRow(spacing: NV.Space.s, lineSpacing: NV.Space.s) {
                 ForEach(session.subjects) { subject in
                     Button {
-                        query = subject.name
-                        runSearch(subject.name)
+                        browse(subject)
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: subject.icon).font(.system(size: 12, weight: .medium))
@@ -111,6 +129,59 @@ struct ExploreView: View {
                         .cardSurface(NV.Radius.pill)
                     }
                     .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    /// Subject chips are a catalog browse, not a full-text search. Searching
+    /// for "Mathematics" used to show an empty state even while the catalog
+    /// contained Derivatives and other math concepts.
+    private func subjectResults(_ subject: SubjectDTO) -> some View {
+        VStack(alignment: .leading, spacing: NV.Space.m) {
+            NVSectionHeader(
+                title: subject.name,
+                subtitle: "\(subjectConcepts.count) concepts",
+                action: ("All subjects", { clearSubject() })
+            )
+
+            if subjectConcepts.isEmpty {
+                NVEmptyState(
+                    icon: subject.icon,
+                    title: "No concepts yet",
+                    message: "This subject has not been added to the catalog yet."
+                )
+                .padding(.top, NV.Space.section)
+            } else {
+                VStack(spacing: NV.Space.s) {
+                    ForEach(subjectConcepts) { concept in
+                        NavigationLink(value: RelatedConceptDTO(
+                            name: concept.name, id: concept.id.uuidString, slug: concept.slug
+                        )) {
+                            HStack(spacing: NV.Space.m) {
+                                Image(systemName: subject.icon)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(NV.spark)
+                                    .frame(width: 28, height: 28)
+                                    .background(NV.sparkSoft, in: Circle())
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(concept.name).font(NV.bodyStrong).foregroundStyle(NV.ink)
+                                    Text(concept.description)
+                                        .font(NV.caption)
+                                        .foregroundStyle(NV.inkTertiary)
+                                        .lineLimit(2)
+                                }
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(NV.inkGhost)
+                            }
+                            .padding(NV.Space.m)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .cardSurface(NV.Radius.control)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
@@ -239,6 +310,7 @@ struct ExploreView: View {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 2 else {
             results = nil
+            loading = false
             return
         }
         searchTask = Task {
@@ -270,5 +342,43 @@ struct ExploreView: View {
             self.error = APIError.transport(error)
         }
         loading = false
+    }
+
+    private func browse(_ subject: SubjectDTO) {
+        searchTask?.cancel()
+        selectedSubject = subject
+        subjectConcepts = []
+        query = ""
+        results = nil
+        error = nil
+        loading = true
+        searchTask = Task { await loadSubject(subject) }
+    }
+
+    private func clearSubject() {
+        searchTask?.cancel()
+        selectedSubject = nil
+        subjectConcepts = []
+        error = nil
+        loading = false
+    }
+
+    private func loadSubject(_ subject: SubjectDTO) async {
+        do {
+            let concepts: [ConceptDTO] = try await session.api.send(
+                .get, "concepts", query: ["subject_slug": subject.slug]
+            )
+            guard !Task.isCancelled, selectedSubject?.id == subject.id else { return }
+            subjectConcepts = concepts
+        } catch let e as APIError {
+            guard !Task.isCancelled else { return }
+            error = e
+        } catch {
+            guard !Task.isCancelled else { return }
+            self.error = APIError.transport(error)
+        }
+        if !Task.isCancelled, selectedSubject?.id == subject.id {
+            loading = false
+        }
     }
 }
