@@ -5,13 +5,18 @@ from __future__ import annotations
 import time
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Request
+from sqlalchemy import case, delete
+from sqlalchemy.dialects.postgresql import insert
 
 from novi.config import get_settings
 from novi.core.deps import CurrentUser
 from novi.core.errors import RateLimited
 from novi.core.logging import get_logger
+from novi.db import get_sessionmaker
+from novi.models import RateLimitBucket
 
 logger = get_logger(__name__)
 
@@ -32,6 +37,8 @@ LIMITS = {
 }
 
 _buckets: dict[str, tuple[int, float]] = defaultdict(lambda: (0, 0.0))
+_MAX_BUCKETS = 20_000
+_last_cleanup = 0.0
 
 
 def _client_ip(request: Request) -> str:
@@ -42,10 +49,10 @@ def _client_ip(request: Request) -> str:
     production, if that is missing, the leftmost forwarded hop is the next
     best thing. Locally we use the socket peer.
     """
-    cf = request.headers.get("cf-connecting-ip")
-    if cf:
-        return cf.strip()
-    if get_settings().is_production:
+    if get_settings().trust_proxy_headers:
+        cf = request.headers.get("cf-connecting-ip")
+        if cf:
+            return cf.strip()
         forwarded = request.headers.get("x-forwarded-for")
         if forwarded:
             return forwarded.split(",")[0].strip()
@@ -61,7 +68,43 @@ def _key(request: Request, name: str) -> str:
     return f"{name}:ip:{_client_ip(request)}"
 
 
-def _check(request: Request, name: str) -> None:
+async def _check_distributed(key: str, limit: Limit) -> tuple[int, float]:
+    global _last_cleanup
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(seconds=limit.seconds)
+    statement = (
+        insert(RateLimitBucket)
+        .values(key=key, count=1, window_started=now)
+        .on_conflict_do_update(
+            index_elements=["key"],
+            set_={
+                "count": case(
+                    (RateLimitBucket.window_started <= cutoff, 1),
+                    else_=RateLimitBucket.count + 1,
+                ),
+                "window_started": case(
+                    (RateLimitBucket.window_started <= cutoff, now),
+                    else_=RateLimitBucket.window_started,
+                ),
+            },
+        )
+        .returning(RateLimitBucket.count, RateLimitBucket.window_started)
+    )
+    async with get_sessionmaker()() as db:
+        count, started = (await db.execute(statement)).one()
+        if time.monotonic() - _last_cleanup >= 60:
+            await db.execute(
+                delete(RateLimitBucket).where(
+                    RateLimitBucket.window_started < now - timedelta(days=1)
+                )
+            )
+            _last_cleanup = time.monotonic()
+        await db.commit()
+    return count, max(0.0, (now - started).total_seconds())
+
+
+async def _check(request: Request, name: str) -> None:
+    global _last_cleanup
     if get_settings().env == "test":
         return
     limit = LIMITS[name]
@@ -71,7 +114,29 @@ def _check(request: Request, name: str) -> None:
     if name == "auth" and get_settings().env == "development":
         limit = Limit(60, 60)
     key = _key(request, name)
+    if get_settings().is_production:
+        count, elapsed = await _check_distributed(key, limit)
+        if count > limit.times:
+            logger.warning("rate_limited", extra={"limit": name})
+            raise RateLimited(
+                f"Too many requests. Try again in {max(1, int(limit.seconds - elapsed) + 1)}s.",
+                details={"limit": limit.times, "window_seconds": limit.seconds},
+            )
+        return
     now = time.monotonic()
+    if now - _last_cleanup >= 60 or len(_buckets) >= _MAX_BUCKETS:
+        max_window = max(item.seconds for item in LIMITS.values())
+        expired = [
+            bucket
+            for bucket, (_, started) in _buckets.items()
+            if now - started >= max_window
+        ]
+        for bucket in expired:
+            _buckets.pop(bucket, None)
+        _last_cleanup = now
+    if key not in _buckets and len(_buckets) >= _MAX_BUCKETS:
+        logger.warning("rate_limit_capacity_reached", extra={"limit": name})
+        raise RateLimited("Too many clients. Try again shortly.")
     count, started = _buckets[key]
     if now - started >= limit.seconds:
         _buckets[key] = (1, now)
@@ -99,12 +164,12 @@ def rate_limit(name: str, *, per_user: bool = False):
 
         async def _authed(request: Request, user: CurrentUser) -> None:
             request.state.user = user
-            _check(request, name)
+            await _check(request, name)
 
         return _authed
 
     async def _anon(request: Request) -> None:
-        _check(request, name)
+        await _check(request, name)
 
     return _anon
 

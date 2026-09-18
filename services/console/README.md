@@ -47,6 +47,7 @@ npx wrangler d1 create novi-console   # put the id in wrangler.jsonc
 npx wrangler d1 migrations apply novi-console --remote
 npx wrangler secret put ADMIN_PASSWORD
 npx wrangler secret put CONSOLE_ORIGIN_SECRET   # openssl rand -base64 48
+# Set vars.API_BASE_URL in wrangler.jsonc to the HTTPS Novi API.
 npx wrangler deploy
 ```
 
@@ -93,7 +94,9 @@ The Novi API authenticates ingest with `X-Novi-Origin-Secret`.
 Admin routes sit under `/api/admin/*` and use an HttpOnly session cookie
 issued by `POST /api/admin/login`.
 
-Disabling a user writes D1 immediately. If `API_BASE_URL` is set, the Worker
-also PATCHes the origin so Postgres `is_active` and refresh tokens match.
+Disabling a user first PATCHes the HTTPS `API_BASE_URL`; only a successful API
+response is then written to D1. `API_BASE_URL` is required for user changes,
+so the console cannot claim an account is disabled while refresh tokens remain
+valid on the origin.
 Login on the origin consults D1 as well, and **fails open** if the Worker is
 unreachable — an outage of this ledger must not lock every learner out.

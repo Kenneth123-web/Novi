@@ -156,8 +156,8 @@ async def test_gateway_maps_capacity_errors_to_ai_unavailable(configured) -> Non
 
     assert exc.value.code == "AI_UNAVAILABLE"
     assert exc.value.details["reason"] == "capacity"
-    # The upstream text is kept for the log, not for the student.
-    assert "rate limit" in exc.value.details["upstream"].lower()
+    # Provider messages can contain infrastructure details and are log-only.
+    assert "upstream" not in exc.value.details
 
 
 @respx.mock

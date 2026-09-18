@@ -17,7 +17,8 @@ cd "$ROOT"
 
 PG_BIN="/opt/homebrew/opt/postgresql@17/bin"
 [ -d "$PG_BIN" ] && export PATH="$PG_BIN:$PATH"
-PY=".venv/bin/python"
+PY="services/api/.venv/bin/python"
+export PYTHONPATH="$ROOT/services/api"
 
 # Xcode 26 lives in /Applications. The command-line tools alone cannot build an
 # iOS target, and xcodebuild's error for that names the wrong cause.
@@ -27,8 +28,7 @@ need() { command -v "$1" >/dev/null 2>&1 || { echo "missing: $1" >&2; exit 1; };
 
 cmd_setup() {
   need uv
-  uv venv .venv --python 3.13 >/dev/null
-  VIRTUAL_ENV=.venv uv pip install -e "services/api[dev]" >/dev/null
+  uv sync --project services/api --locked --extra dev --python 3.13 >/dev/null
   echo "· python env ready"
 
   if ! pg_isready -q -h localhost -p 5432 2>/dev/null; then
@@ -36,7 +36,7 @@ cmd_setup() {
     exit 1
   fi
   psql -h localhost -d postgres -tc "SELECT 1 FROM pg_roles WHERE rolname='novi'" | grep -q 1 \
-    || psql -h localhost -d postgres -c "CREATE ROLE novi LOGIN PASSWORD 'novi' SUPERUSER;" >/dev/null
+    || psql -h localhost -d postgres -c "CREATE ROLE novi LOGIN PASSWORD 'novi';" >/dev/null
   for db in novi novi_test; do
     psql -h localhost -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='$db'" | grep -q 1 \
       || createdb -h localhost -O novi "$db"
@@ -47,16 +47,16 @@ cmd_setup() {
   cmd_seed
 }
 
-cmd_migrate() { .venv/bin/alembic -c database/alembic.ini upgrade head; }
+cmd_migrate() { services/api/.venv/bin/alembic -c database/alembic.ini upgrade head; }
 cmd_seed()    { $PY -m database.seeds.seed; }
-cmd_api()     { .venv/bin/uvicorn novi.main:app --reload --host 0.0.0.0 --port 8000; }
+cmd_api()     { services/api/.venv/bin/uvicorn novi.main:app --reload --host 127.0.0.1 --port 8000; }
 cmd_test()    { $PY -m pytest services/api/tests "$@"; }
 
 cmd_check() {
-  .venv/bin/ruff check services/api database
+  services/api/.venv/bin/ruff check services/api database
   $PY -m pytest services/api/tests -q
   # A model changed without a migration is the failure this catches.
-  .venv/bin/alembic -c database/alembic.ini check
+  services/api/.venv/bin/alembic -c database/alembic.ini check
 }
 
 cmd_ios() {

@@ -88,9 +88,9 @@ skip-login all write the account there; every API/AI call is recorded against
 it. Open the Worker URL to disable a user or read what they spent. See
 [`services/console/README.md`](services/console/README.md).
 
-The simulator shares the host's loopback, so the app finds the API at
-`127.0.0.1:8000` with no configuration. A device build needs the host's LAN
-address — pass `-apiBaseURL http://192.168.x.x:8000/v1`.
+The Debug simulator shares the host's loopback, so the app finds the API at
+`127.0.0.1:8000` with no configuration. A physical device and every Release
+build require an HTTPS API endpoint; pass `-apiBaseURL https://dev-api.example/v1`.
 
 ## Design
 
@@ -192,14 +192,14 @@ actually looked at.
 ```bash
 xcrun simctl launch <UDID> luke.novi.app \
   -demoResetSession YES                        # forget stored tokens → sign-in
-  -demoSkipLogin YES                           # POST /auth/dev-skip, for real
+  -demoSkipLogin YES -devSkipSecret ...        # opt-in local dev session
   -demoEmail a@example.com -demoPassword ...   # sign in on launch, for real
   -demoSkipIntro YES                           # straight past the opening
   -demoHoldIntro YES                           # stop on the opening's last frame
   -demoTab home|explore|ask|passport|profile
   -demoQuestion "why does a derivative represent slope"
   -demoSearch photosynthesis
-  -apiBaseURL http://host:8000/v1
+  -apiBaseURL https://dev-api.example/v1
 ```
 
 `-demoEmail` signs in against the real API rather than faking a signed-in

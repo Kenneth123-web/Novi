@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 from sqlalchemy import text
 
 from novi import __version__
-from novi.ai.gateway import gateway
 from novi.config import get_settings
 from novi.core.deps import DB
 
@@ -23,10 +22,6 @@ async def health() -> dict[str, Any]:
 @router.get("/health/ready", summary="Readiness")
 async def ready(
     db: DB,
-    # Off by default: probing the AI gateway costs a real request, and a load
-    # balancer polling readiness every 10s would spend the budget on health
-    # checks.
-    check_ai: bool = Query(default=False),
 ) -> dict[str, Any]:
     checks: dict[str, Any] = {}
     try:
@@ -36,9 +31,7 @@ async def ready(
         # Exception class names leak infrastructure (asyncpg vs psycopg).
         checks["database"] = "error"
 
-    checks["ai"] = await gateway.health() if check_ai else (
-        {"status": "configured" if get_settings().ai_configured else "unconfigured"}
-    )
+    checks["ai"] = {"status": "configured" if get_settings().ai_configured else "unconfigured"}
 
     healthy = checks["database"] == "ok"
     return {"status": "ok" if healthy else "degraded", "checks": checks}

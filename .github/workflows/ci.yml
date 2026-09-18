@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   pull_request:
   push:
@@ -29,6 +32,7 @@ jobs:
 
     env:
       DATABASE_URL: postgresql+asyncpg://novi:novi@localhost:5432/novi_test
+      PYTHONPATH: services/api
       ENV: test
       JWT_SECRET: ci-secret-value-that-is-long-enough-00000000
       # Empty on purpose: the suite must never reach a real provider. The AI
@@ -36,31 +40,29 @@ jobs:
       AI_API_KEY: ""
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
         with:
           enable-cache: true
 
       - name: Install
-        run: |
-          uv venv .venv --python 3.13
-          VIRTUAL_ENV=.venv uv pip install -e "services/api[dev]"
+        run: uv sync --project services/api --locked --extra dev --python 3.13
 
       - name: Lint
-        run: .venv/bin/ruff check services/api database
+        run: services/api/.venv/bin/ruff check services/api database
 
       - name: Tests
-        run: .venv/bin/python -m pytest services/api/tests -q
+        run: services/api/.venv/bin/python -m pytest services/api/tests -q
 
       - name: Migrations apply, and match the models
         run: |
-          .venv/bin/alembic -c database/alembic.ini upgrade head
+          services/api/.venv/bin/alembic -c database/alembic.ini upgrade head
           # Fails if a model changed without a matching migration.
-          .venv/bin/alembic -c database/alembic.ini check
+          services/api/.venv/bin/alembic -c database/alembic.ini check
 
       - name: Migrations are reversible
-        run: .venv/bin/alembic -c database/alembic.ini downgrade base
+        run: services/api/.venv/bin/alembic -c database/alembic.ini downgrade base
 
   edge:
     name: edge
@@ -69,9 +71,9 @@ jobs:
       run:
         working-directory: services/edge
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -95,9 +97,9 @@ jobs:
       run:
         working-directory: services/console
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: npm
@@ -115,7 +117,7 @@ jobs:
     name: ios
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Install xcodegen
         run: brew install xcodegen

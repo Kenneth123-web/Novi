@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from novi import __version__
 from novi.config import get_settings
@@ -32,6 +33,67 @@ Authenticate with `Authorization: Bearer <access_token>`.
 The AI gateway key lives on this service and is never sent to a client: the
 app calls `POST /v1/ask`, and this calls Gemini.
 """
+
+
+class RequestBodyLimitMiddleware:
+    """Reject oversized HTTP bodies before request parsing or persistence."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = dict(scope.get("headers", []))
+        try:
+            declared = int(headers.get(b"content-length", b"0"))
+        except ValueError:
+            declared = self.max_bytes + 1
+        if declared > self.max_bytes:
+            await self._reject(send)
+            return
+
+        chunks: list[bytes] = []
+        seen = 0
+        while True:
+            message = await receive()
+            if message["type"] == "http.disconnect":
+                return
+            chunk = message.get("body", b"")
+            chunks.append(chunk)
+            seen += len(chunk)
+            if seen > self.max_bytes:
+                await self._reject(send)
+                return
+            if not message.get("more_body", False):
+                break
+
+        delivered = False
+
+        async def replay_receive() -> Message:
+            nonlocal delivered
+            if delivered:
+                return {"type": "http.disconnect"}
+            delivered = True
+            return {"type": "http.request", "body": b"".join(chunks), "more_body": False}
+
+        await self.app(scope, replay_receive, send)
+
+    async def _reject(self, send: Send) -> None:
+        body = b'{"error":{"code":"PAYLOAD_TOO_LARGE","message":"Request body is too large"}}'
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 413,
+                "headers": [
+                    (b"content-type", b"application/json"),
+                    (b"content-length", str(len(body)).encode()),
+                ],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
 
 
 @asynccontextmanager
@@ -83,6 +145,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
         expose_headers=["x-request-id"],
     )
+    app.add_middleware(RequestBodyLimitMiddleware, max_bytes=s.max_request_body_bytes)
     # Outermost, so the request id already exists when an error handler builds
     # its response body.
     app.add_middleware(RequestContextMiddleware)

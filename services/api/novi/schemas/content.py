@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from novi.schemas.common import ORMModel
 from novi.schemas.profile import ConceptOut
@@ -71,11 +72,18 @@ class ContentDetail(BaseModel):
 
 
 class InteractionRequest(BaseModel):
-    kind: str
+    kind: str = Field(min_length=1, max_length=24)
     content_id: uuid.UUID | None = None
     concept_id: uuid.UUID | None = None
     dwell_seconds: int = Field(default=0, ge=0, le=86_400)
     context: dict = Field(default_factory=dict)
+
+    @field_validator("context")
+    @classmethod
+    def _bounded_context(cls, value: dict) -> dict:
+        if len(json.dumps(value, default=str).encode()) > 8_192:
+            raise ValueError("context must be at most 8192 bytes")
+        return value
 
 
 class SaveRequest(BaseModel):

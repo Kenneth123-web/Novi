@@ -62,7 +62,7 @@ Delete the provider key from that file. That deletion is the point of all this.
 ```bash
 cp .dev.vars.example .dev.vars   # fill in; gitignored
 npm run dev                      # :8787
-npm test                         # 17 tests, in workerd
+npm test                         # 20 tests, in workerd
 npm run typecheck
 ```
 
@@ -95,8 +95,6 @@ are not stored; the **responses** are, at the edge, for the TTL. Set
 (`temperature > 0.3`) and streamed ones are never cached, and neither are
 errors — caching a rate-limit reply would pin an outage in place for a day.
 
-**The daily cap is a guard rail, not a ledger.** It is a KV read-then-write, and
-KV is eventually consistent, so under concurrency a few extra requests get
-through. That is deliberate: this exists to stop a runaway loop or a leaked
-secret, and a Durable Object would add a stateful hop to every request to make
-a number exact that nobody bills against.
+**The daily cap is atomically enforced.** A Durable Object serialises budget
+reservations, so concurrent requests cannot all observe and overwrite the same
+counter. Cache hits do not reserve budget; forwarded attempts do.

@@ -171,7 +171,7 @@ struct RemoteCover: View {
     let seed: String
 
     var body: some View {
-        if let url, let parsed = URL(string: url), !url.isEmpty {
+        if let parsed = NetworkURLPolicy.external(url) {
             AsyncImage(url: parsed) { phase in
                 switch phase {
                 case .success(let image):

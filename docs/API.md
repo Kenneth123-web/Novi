@@ -60,9 +60,10 @@ skipping it makes "no such account" measurably faster than "wrong password",
 which is a working account-enumeration oracle.
 
 `POST /auth/dev-skip` issues a real session for the reserved developer account
-(`developer@novi.app`). In development and test it is open. In production the
-route 404s unless `DEV_SKIP_SECRET` is set, and then the body must carry that
-secret. It is not a fake phase: the tokens are the same shape login returns.
+(`developer@novi.app`). It exists only when `DEV_SKIP_ENABLED=true` outside
+production and always requires the request body to carry `DEV_SKIP_SECRET`.
+Production always returns 404. It is not a fake phase: the tokens are the same
+shape login returns.
 
 ### Profile
 `GET /me` · `PATCH /me` · `POST /onboarding` ·

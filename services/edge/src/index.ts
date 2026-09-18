@@ -26,6 +26,8 @@
  * holding the shared secret can spend the budget, so treat it like a key.
  */
 
+import { DurableObject } from "cloudflare:workers";
+
 /** The provider's error shape, so the Novi backend's existing mapping works. */
 function providerError(status: number, type: string, message: string): Response {
   return Response.json({ type: "error", error: { type, message } }, { status });
@@ -58,33 +60,45 @@ async function bodyHash(body: string): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function utcDay(now: Date): string {
-  return now.toISOString().slice(0, 10);
+type BudgetState = { day: string; used: number };
+
+export class BudgetCounter extends DurableObject<Env> {
+  override async fetch(request: Request): Promise<Response> {
+    if (request.method === "DELETE") {
+      await this.ctx.storage.deleteAll();
+      return Response.json({ ok: true });
+    }
+    const url = new URL(request.url);
+    const day = url.searchParams.get("day") ?? "";
+    const cap = Number(url.searchParams.get("cap"));
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(cap) || cap <= 0) {
+      return Response.json({ ok: false, used: 0 }, { status: 400 });
+    }
+    if (url.pathname === "/status") {
+      const current = (await this.ctx.storage.get<BudgetState>("budget")) ?? { day, used: 0 };
+      return Response.json(current.day === day ? current : { day, used: 0 });
+    }
+    const result = await this.ctx.storage.transaction(async (txn) => {
+      const current = (await txn.get<BudgetState>("budget")) ?? { day, used: 0 };
+      const state = current.day === day ? current : { day, used: 0 };
+      if (state.used >= cap) return { ok: false, used: state.used };
+      state.used += 1;
+      await txn.put("budget", state);
+      return { ok: true, used: state.used };
+    });
+    return Response.json(result);
+  }
 }
 
-/**
- * The day's request budget.
- *
- * KV is eventually consistent and this is a read-then-write, so under
- * concurrency it can let a few extra requests through. That is a deliberate
- * trade: this is a guard rail against a runaway loop or a leaked secret, not
- * an accounting ledger. A Durable Object would count exactly and would add a
- * stateful hop to every request for a number nobody bills against.
- */
-async function withinBudget(env: Env, now: Date): Promise<{ ok: boolean; used: number }> {
+async function reserveBudget(env: Env, now: Date): Promise<{ ok: boolean; used: number }> {
   const cap = Number(env.DAILY_REQUEST_CAP);
   if (!Number.isFinite(cap) || cap <= 0) return { ok: true, used: 0 };
-
-  const key = `budget:${utcDay(now)}`;
-  const used = Number(await env.EDGE_KV.get(key)) || 0;
-  return { ok: used < cap, used };
-}
-
-async function recordSpend(env: Env, now: Date, used: number): Promise<void> {
-  const key = `budget:${utcDay(now)}`;
-  // Two days, so yesterday's counter is still readable for a moment after
-  // midnight UTC and does not vanish mid-request.
-  await env.EDGE_KV.put(key, String(used + 1), { expirationTtl: 60 * 60 * 48 });
+  const id = env.BUDGET_COUNTER.idFromName("daily-provider-budget");
+  const response = await env.BUDGET_COUNTER.get(id).fetch(
+    `https://budget.internal/reserve?day=${now.toISOString().slice(0, 10)}&cap=${cap}`,
+  );
+  if (!response.ok) throw new Error("Budget counter unavailable");
+  return response.json<{ ok: boolean; used: number }>();
 }
 
 /** The shared secret, from whichever header this protocol puts it in. */
@@ -121,7 +135,7 @@ async function handleProxy(
   // what makes caching and hashing possible. The cap above is what keeps it
   // bounded; `await request.text()` on an unbounded body would not be safe.
   const body = await request.text();
-  if (body.length > maxBytes) {
+  if (new TextEncoder().encode(body).byteLength > maxBytes) {
     return providerError(413, "invalid_request_error", "Request body too large");
   }
 
@@ -173,7 +187,13 @@ async function handleProxy(
 
   // ── Budget ───────────────────────────────────────────────────────────────
   const now = new Date();
-  const budget = await withinBudget(env, now);
+  let budget: { ok: boolean; used: number };
+  try {
+    budget = await reserveBudget(env, now);
+  } catch {
+    log("edge_budget_counter_unavailable");
+    return providerError(503, "api_error", "Budget guard unavailable");
+  }
   if (!budget.ok) {
     log("edge_budget_exhausted", { used: budget.used });
     // Reported as a rate limit on purpose: the Novi backend already maps that
@@ -210,7 +230,6 @@ async function handleProxy(
     return providerError(502, "api_error", "Could not reach the AI provider");
   }
 
-  ctx.waitUntil(recordSpend(env, now, budget.used));
   log("edge_forwarded", {
     protocol,
     model: parsed.model,

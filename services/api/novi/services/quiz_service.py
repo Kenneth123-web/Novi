@@ -126,7 +126,9 @@ async def generate(
 async def submit(
     db: AsyncSession, *, user: User, quiz_id: uuid.UUID, answers: list[QuizAnswer]
 ) -> tuple[Quiz, list[GradedAnswer], float, str, list[StampOut]]:
-    quiz = await db.get(Quiz, quiz_id)
+    quiz = (
+        await db.execute(select(Quiz).where(Quiz.id == quiz_id).with_for_update())
+    ).scalar_one_or_none()
     if quiz is None or quiz.user_id != user.id:
         raise NotFound("Quiz not found")
     if quiz.completed_at is not None:

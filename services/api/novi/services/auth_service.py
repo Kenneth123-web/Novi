@@ -12,6 +12,7 @@ wrong and easy to lose in a refactor:
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -80,7 +81,7 @@ async def register(
     user = User(
         email=email,
         username=username,
-        password_hash=hash_password(password),
+        password_hash=await asyncio.to_thread(hash_password, password),
         display_name=(display_name or username)[:80],
         avatar_seed=uuid.uuid4().hex[:12],
     )
@@ -88,16 +89,11 @@ async def register(
     db.add(user)
     try:
         await db.flush()
-    except IntegrityError as exc:
+    except IntegrityError:
         await db.rollback()
-        # Naming the colliding field is safe on registration — the caller is
-        # about to discover it by trying another one anyway — and it is the
-        # difference between a fixable form error and a dead end.
-        field = "email" if "email" in str(exc.orig).lower() else "username"
         raise Conflict(
-            f"That {field} is already taken",
+            "Account details are already in use",
             code="ALREADY_EXISTS",
-            details={"field": field},
         ) from None
 
     tokens = await _issue(db, user, user_agent)
@@ -115,7 +111,9 @@ async def login(
 ) -> tuple[User, TokenPair]:
     email = email.strip().lower()
     user = (await db.execute(select(User).where(User.email == email))).scalar_one_or_none()
-    ok = verify_password(password, user.password_hash if user else _DUMMY_HASH)
+    ok = await asyncio.to_thread(
+        verify_password, password, user.password_hash if user else _DUMMY_HASH
+    )
     if user is None or not ok or not user.is_active:
         raise Unauthorized("Email or password is incorrect", code="INVALID_CREDENTIALS")
     if await console_client.is_blocked(str(user.id)):
@@ -131,21 +129,23 @@ async def login(
 
 
 async def refresh(db: AsyncSession, *, refresh_token: str, user_agent: str = "") -> TokenPair:
-    row = (
-        await db.execute(select(Session).where(Session.token_hash == fingerprint(refresh_token)))
-    ).scalar_one_or_none()
-    if row is None:
+    # Atomic consume: exactly one concurrent presenter can spend this token.
+    spent = (
+        await db.execute(
+            delete(Session)
+            .where(Session.token_hash == fingerprint(refresh_token))
+            .returning(Session.user_id, Session.expires_at)
+        )
+    ).one_or_none()
+    if spent is None:
         raise Unauthorized("Please sign in again", code="TOKEN_INVALID")
-    if row.expires_at <= _now():
-        await db.delete(row)
+    user_id, expires_at = spent
+    if expires_at <= _now():
         raise Unauthorized("Please sign in again", code="TOKEN_EXPIRED")
-    user = await db.get(User, row.user_id)
-    if user is None or not user.is_active:
-        await db.delete(row)
+    user = await db.get(User, user_id)
+    if user is None or not user.is_active or await console_client.is_blocked(str(user_id)):
+        await db.execute(delete(Session).where(Session.user_id == user_id))
         raise Unauthorized("Please sign in again", code="TOKEN_INVALID")
-
-    await db.delete(row)  # rotation: the presented token is now spent
-    await db.flush()
     return await _issue(db, user, user_agent)
 
 
@@ -159,14 +159,13 @@ async def skip_login(
 ) -> tuple[User, TokenPair]:
     """Mint a real session for the reserved developer user.
 
-    Production: the route does not exist unless DEV_SKIP_SECRET is set, and
-    then the presented secret must match. Development and test: open, unless
-    a secret has been configured, in which case it is required there too.
+    The route is opt-in outside production and always requires a matching
+    secret. Production never exposes it.
     """
     s = get_settings()
-    if s.env == "production" and not s.dev_skip_secret:
+    if s.env == "production" or not s.dev_skip_enabled:
         raise NotFound("No such route")
-    if s.dev_skip_secret and not secret_matches(secret, s.dev_skip_secret):
+    if not s.dev_skip_secret or not secret_matches(secret, s.dev_skip_secret):
         raise Unauthorized("Developer skip is not allowed", code="UNAUTHORIZED")
 
     user = (
@@ -182,7 +181,7 @@ async def skip_login(
         user = User(
             email=DEV_SKIP_EMAIL,
             username=username,
-            password_hash=hash_password(new_opaque_token()),
+            password_hash=await asyncio.to_thread(hash_password, new_opaque_token()),
             display_name="Developer",
             avatar_seed="developer",
         )

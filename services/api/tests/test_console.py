@@ -61,6 +61,25 @@ async def test_login_checks_console_status(
 
 
 @respx.mock
+async def test_refresh_checks_console_status(
+    client: AsyncClient, registration: dict, console_origin: None
+) -> None:
+    respx.post("https://console.test/api/ingest/account").mock(
+        return_value=httpx.Response(204)
+    )
+    created = await client.post("/auth/register", json=registration)
+    user_id = created.json()["user"]["id"]
+    respx.get(f"https://console.test/api/ingest/status/{user_id}").mock(
+        return_value=httpx.Response(200, json={"is_active": False})
+    )
+    refreshed = await client.post(
+        "/auth/refresh",
+        json={"refresh_token": created.json()["tokens"]["refresh_token"]},
+    )
+    assert refreshed.status_code == 401
+
+
+@respx.mock
 async def test_console_outage_does_not_block_login(
     client: AsyncClient, registration: dict, console_origin: None
 ) -> None:
@@ -123,6 +142,6 @@ async def test_dev_skip_caps_a_hung_console_status(
         return_value=httpx.Response(204)
     )
     started = time.perf_counter()
-    r = await client.post("/auth/dev-skip", json={})
+    r = await client.post("/auth/dev-skip", json={"secret": "test-dev-skip-secret"})
     assert r.status_code == 200, r.text
     assert time.perf_counter() - started < 5

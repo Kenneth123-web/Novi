@@ -18,6 +18,8 @@ from collections.abc import AsyncIterator, Iterator
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://novi:novi@localhost:5432/novi_test")
 os.environ["ENV"] = "test"
 os.environ["JWT_SECRET"] = "test-secret-value-that-is-long-enough-00000"
+os.environ["DEV_SKIP_ENABLED"] = "true"
+os.environ["DEV_SKIP_SECRET"] = "test-dev-skip-secret"
 # Tests must never call the real gateway: it costs money and it makes the suite
 # depend on someone else's uptime. Individual tests install a fake.
 os.environ["AI_API_KEY"] = ""
@@ -38,7 +40,7 @@ TABLES = (
     "users, subjects, concepts, concept_edges, content, content_concepts, "
     "discussions, discussion_comments, interactions, saved_content, content_likes, "
     "learning_progress, questions, ai_responses, quizzes, quiz_questions, "
-    "quiz_results, passport_stamps, projects, project_concepts"
+    "quiz_results, passport_stamps, projects, project_concepts, rate_limit_buckets"
 )
 
 

@@ -110,4 +110,4 @@ class QuizResultOut(BaseModel):
 
 
 class SummarizeRequest(BaseModel):
-    translate_to: str | None = None
+    translate_to: str | None = Field(default=None, min_length=2, max_length=40)

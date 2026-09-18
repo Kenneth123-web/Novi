@@ -208,9 +208,8 @@ async def test_viewing_content_raises_subject_interest(
     item = feed.json()["items"][0]
 
     await client.post(
-        "/interactions",
+        f"/content/{item['content']['id']}/like",
         headers=onboarded["headers"],
-        json={"kind": "LIKE", "content_id": item["content"]["id"]},
     )
 
     after = (await client.get("/me", headers=onboarded["headers"])).json()["profile"]
@@ -223,6 +222,14 @@ async def test_interactions_reject_unknown_kinds(client: AsyncClient, auth: dict
     )
     assert r.status_code == 422
     assert r.json()["error"]["details"]["field"] == "kind"
+
+
+async def test_interactions_cannot_forge_mastery(client: AsyncClient, auth: dict) -> None:
+    for kind in ("QUIZ_COMPLETE", "MARK_LEARNED"):
+        response = await client.post(
+            "/interactions", headers=auth["headers"], json={"kind": kind}
+        )
+        assert response.status_code == 422
 
 
 async def test_save_is_idempotent_and_reversible(

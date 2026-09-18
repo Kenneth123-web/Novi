@@ -13,6 +13,7 @@ place the origin writes to it. Two rules:
 from __future__ import annotations
 
 import asyncio
+import inspect
 from typing import Any
 
 import httpx
@@ -27,6 +28,7 @@ logger = get_logger(__name__)
 _TIMEOUT = httpx.Timeout(2.5, connect=1.0)
 _HARD_CAP = 2.6
 _tasks: set[asyncio.Task[None]] = set()
+_MAX_BACKGROUND_TASKS = 100
 
 
 def _enabled() -> tuple[str, str] | None:
@@ -94,9 +96,16 @@ async def _get_json(path: str) -> dict[str, Any] | None:
 
 def spawn(coro: Any) -> None:
     """Run a coroutine after the response, if a loop is running."""
+    if len(_tasks) >= _MAX_BACKGROUND_TASKS:
+        if inspect.iscoroutine(coro):
+            coro.close()
+        logger.warning("console_ingest_dropped", extra={"reason": "queue_full"})
+        return
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
+        if inspect.iscoroutine(coro):
+            coro.close()
         return
     task = loop.create_task(coro)
     _tasks.add(task)

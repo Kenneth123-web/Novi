@@ -53,8 +53,8 @@ async def dev_skip(
     """Issue a real session for the reserved developer account.
 
     Exists so a local build can reach the product without a password. In
-    production the route 404s unless DEV_SKIP_SECRET is set, and then the
-    body must carry that secret.
+    It is opt-in outside production and always requires DEV_SKIP_SECRET.
+    Production always returns 404.
     """
     user, tokens = await auth_service.skip_login(
         db, secret=body.secret, user_agent=_ua(request)

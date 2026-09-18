@@ -271,14 +271,11 @@ class AIGateway:
                 "ai_upstream_error",
                 extra={"reason": reason, "status": response.status_code, "detail": message[:200]},
             )
-            # The upstream message is passed through in `details` rather than
-            # in `message`: it is useful in a log and to a developer, and it is
-            # not something to put in front of a student.
             raise AIUnavailable(
                 "The AI tutor is temporarily unavailable"
                 if reason == "capacity"
                 else "The AI service could not answer that",
-                details={"reason": reason, "upstream": message[:200]},
+                details={"reason": reason},
             )
 
         if response.status_code >= 400:

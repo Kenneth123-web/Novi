@@ -14,8 +14,8 @@
   //   CONSOLE_ORIGIN_SECRET  what the Novi API sends to ingest
   "vars": {
     // Origin API the console calls when an admin disables a user.
-    // Empty: D1 is still the ledger; login consults it. Postgres is
-    // updated only when this is set to a reachable Novi API.
+    // Empty fails user-changing admin requests closed. Set this to the
+    // reachable HTTPS Novi API before enabling account administration.
     "API_BASE_URL": ""
   },
 
