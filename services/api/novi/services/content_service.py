@@ -145,7 +145,7 @@ async def search(
     if not cleaned:
         return []
 
-    words = [w for w in re.split(r"\W+", cleaned) if len(w) > 1]
+    words = [w for w in re.split(r"\W+", cleaned) if len(w) > 1][:12]
 
     async def by_tsquery(expression: str) -> list[Content]:
         tsquery = func.websearch_to_tsquery("simple", expression)

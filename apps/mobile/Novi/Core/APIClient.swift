@@ -19,31 +19,37 @@ actor APIClient {
         // generic "can't reach the server" for what is really a model outage.
         var timeout: TimeInterval = 150
 
-        /// Simulator → loopback. Device → Wi-Fi, USB and Bonjour URLs from
-        /// Info.plist, probed in order. `-apiBaseURL` still wins when a launch
-        /// argument is present.
+        /// Debug simulator → loopback. Devices and Release builds accept only
+        /// HTTPS URLs from Info.plist or `-apiBaseURL`.
         var candidates: [URL] = []
 
         static var `default`: Config {
             if let raw = UserDefaults.standard.string(forKey: "apiBaseURL"),
-               let url = URL(string: raw) {
+               let url = URL(string: raw), NetworkURLPolicy.api(url) {
                 return Config(baseURL: url, candidates: [url])
             }
             var urls: [URL] = []
-            #if targetEnvironment(simulator)
+            #if DEBUG && targetEnvironment(simulator)
             urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
             #else
             for key in ["NOVAPIBaseURL", "NOVAPIUsbURL", "NOVAPIHostURL"] {
                 if let raw = Bundle.main.object(forInfoDictionaryKey: key) as? String {
                     let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let url = URL(string: trimmed), !trimmed.isEmpty {
+                    if let url = URL(string: trimmed), !trimmed.isEmpty,
+                       NetworkURLPolicy.api(url) {
                         urls.append(url)
                     }
                 }
             }
             #endif
             if urls.isEmpty {
+                #if DEBUG && targetEnvironment(simulator)
                 urls.append(URL(string: "http://127.0.0.1:8000/v1")!)
+                #else
+                // Fail closed. A Release build without an HTTPS endpoint must
+                // not silently downgrade credentials to a LAN HTTP server.
+                urls.append(URL(string: "https://localhost/v1")!)
+                #endif
             }
             var unique: [URL] = []
             for url in urls where !unique.contains(url) { unique.append(url) }
@@ -61,9 +67,15 @@ actor APIClient {
     private var onAuthenticationLost: (@Sendable () -> Void)?
 
     init(config: Config = .default, tokens: TokenStore = TokenStore()) {
-        self.baseURL = config.baseURL
+        let safe = config.candidates.filter(NetworkURLPolicy.api)
+        #if DEBUG && targetEnvironment(simulator)
+        let fallback = URL(string: "http://127.0.0.1:8000/v1")!
+        #else
+        let fallback = URL(string: "https://localhost/v1")!
+        #endif
+        self.baseURL = NetworkURLPolicy.api(config.baseURL) ? config.baseURL : fallback
         self.longTimeout = config.timeout
-        self.candidates = config.candidates.isEmpty ? [config.baseURL] : config.candidates
+        self.candidates = safe.isEmpty ? [self.baseURL] : safe
         self.tokens = tokens
         let cfg = URLSessionConfiguration.ephemeral
         // Ceiling for Ask/quiz. Auth and the rest set a much shorter

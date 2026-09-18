@@ -54,6 +54,7 @@ final class AppSession: ObservableObject {
         // timeout and then say the server was unreachable.
         await api.prepareNetwork()
 
+        #if DEBUG
         if Demo.resetSession { await api.signOutLocally() }
 
         if Demo.skipLogin {
@@ -70,6 +71,7 @@ final class AppSession: ObservableObject {
             if case .launching = phase { phase = .signedOut }
             return
         }
+        #endif
 
         guard await api.hasSession() else {
             phase = .signedOut
@@ -119,7 +121,7 @@ final class AppSession: ObservableObject {
     /// are missing, this still lands on the questionnaire.
     func skipAsDeveloper() async throws {
         let response: AuthResponseDTO = try await api.send(
-            .post, "auth/dev-skip", body: DevSkipBody()
+            .post, "auth/dev-skip", body: DevSkipBody(secret: Demo.devSkipSecret)
         )
         await api.store(response.tokens)
         await enter(response.user)

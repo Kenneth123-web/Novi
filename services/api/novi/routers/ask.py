@@ -123,9 +123,9 @@ async def translate(
 
 @router.get("/search")
 async def search(
-    q: str,
     user: CurrentUser,
     db: DB,
+    q: str = Query(min_length=1, max_length=200),
     limit: int = Query(default=20, ge=1, le=50),
     _: None = Depends(rate_limit("search", per_user=True)),
 ) -> dict:

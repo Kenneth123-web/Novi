@@ -1,5 +1,5 @@
 import { env, createExecutionContext, waitOnExecutionContext } from "cloudflare:test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 
 const ORIGIN = "test-origin-secret";
@@ -52,6 +52,7 @@ function admin(path: string, token: string, init: RequestInit = {}): Request {
     ...init,
     headers: {
       cookie: `novi_console=${token}`,
+      origin: "https://console.test",
       ...(init.body ? { "content-type": "application/json" } : {}),
       ...(init.headers ?? {}),
     },
@@ -86,7 +87,7 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
-  // D1 is wiped in beforeEach.
+  vi.restoreAllMocks();
 });
 
 describe("health", () => {
@@ -145,8 +146,16 @@ describe("ingest", () => {
     expect(response.status).toBe(204);
   });
 
+  it("rejects malformed dates and token counts before storage", async () => {
+    expect((await run(ingestAccount({ ...sample, created_at: "<script>" }))).status).toBe(422);
+    expect(
+      (await run(ingestUsage({ method: "GET", path: "/v1/feed", status: 200, input_tokens: "<img>" }))).status,
+    ).toBe(422);
+  });
+
   it("a later login ingest does not re-enable a disabled account", async () => {
     await run(ingestAccount(sample));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 200 }));
     const token = await signIn();
     const disabled = await run(
       admin(`/api/admin/users/${sample.id}`, token, {
@@ -164,6 +173,25 @@ describe("ingest", () => {
     );
     const body = (await status.json()) as { is_active: boolean };
     expect(body.is_active).toBe(false);
+  });
+
+  it("does not claim a user is disabled when the API rejects the change", async () => {
+    await run(ingestAccount(sample));
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
+    const token = await signIn();
+    const response = await run(
+      admin(`/api/admin/users/${sample.id}`, token, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: false }),
+      }),
+    );
+    expect(response.status).toBe(502);
+    const status = await run(
+      new Request(`https://console.test/api/ingest/status/${sample.id}`, {
+        headers: originHeaders(),
+      }),
+    );
+    expect(((await status.json()) as { is_active: boolean }).is_active).toBe(true);
   });
 
   it("ignores is_admin on ingest so a leaked origin secret cannot mint operators", async () => {
@@ -203,6 +231,19 @@ describe("admin", () => {
       expect((await attempt()).status).toBe(401);
     }
     expect((await attempt()).status).toBe(429);
+  });
+
+  it("rejects a state change without a same-origin header", async () => {
+    await run(ingestAccount(sample));
+    const token = await signIn();
+    const response = await run(
+      new Request(`https://console.test/api/admin/users/${sample.id}`, {
+        method: "PATCH",
+        headers: { cookie: `novi_console=${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ is_active: false }),
+      }),
+    );
+    expect(response.status).toBe(403);
   });
 
   it("lists users, stats and usage after sign-in", async () => {

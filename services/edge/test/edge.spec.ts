@@ -42,6 +42,8 @@ beforeEach(async () => {
   // otherwise leak from one case into the next.
   const keys = await env.EDGE_KV.list();
   await Promise.all(keys.keys.map((k) => env.EDGE_KV.delete(k.name)));
+  const id = env.BUDGET_COUNTER.idFromName("daily-provider-budget");
+  await env.BUDGET_COUNTER.get(id).fetch("https://budget.internal/reset", { method: "DELETE" });
 });
 
 afterEach(() => {
@@ -73,7 +75,7 @@ describe("auth", () => {
 
 describe("forwarding", () => {
   it("swaps the shared secret for the provider key", async () => {
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(providerOK());
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => providerOK());
 
     await run(ask({ model: "claude-haiku-4-5", temperature: 0 }));
 
@@ -159,9 +161,9 @@ describe("cache", () => {
 
 describe("budget", () => {
   it("refuses once the day's cap is reached, without calling the provider", async () => {
-    await env.EDGE_KV.put(`budget:${new Date().toISOString().slice(0, 10)}`, "2000");
-    const fetchSpy = vi.spyOn(globalThis, "fetch").mockResolvedValue(providerOK());
-
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async () => providerOK());
+    await run(ask({ model: "m", temperature: 0.9 }));
+    await run(ask({ model: "m", temperature: 0.9 }));
     const response = await run(ask({ model: "m", temperature: 0.9 }));
 
     expect(response.status).toBe(429);
@@ -169,15 +171,18 @@ describe("budget", () => {
     // Reported as a rate limit so the Novi backend maps it to its existing
     // "the tutor is temporarily unavailable" state.
     expect(body.error.type).toBe("rate_limit_error");
-    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("counts a forwarded request against the day", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(providerOK());
     await run(ask({ model: "m", temperature: 0.9 }));
 
-    const used = await env.EDGE_KV.get(`budget:${new Date().toISOString().slice(0, 10)}`);
-    expect(used).toBe("1");
+    const id = env.BUDGET_COUNTER.idFromName("daily-provider-budget");
+    const status = await env.BUDGET_COUNTER.get(id).fetch(
+      `https://budget.internal/status?day=${new Date().toISOString().slice(0, 10)}&cap=2`,
+    );
+    expect(((await status.json()) as { used: number }).used).toBe(1);
   });
 
   it("does not spend budget on a cache hit", async () => {
@@ -187,8 +192,11 @@ describe("budget", () => {
     await run(ask(payload));
     await run(ask(payload));
 
-    const key = `budget:${new Date().toISOString().slice(0, 10)}`;
-    expect(await env.EDGE_KV.get(key)).toBe("1");
+    const id = env.BUDGET_COUNTER.idFromName("daily-provider-budget");
+    const status = await env.BUDGET_COUNTER.get(id).fetch(
+      `https://budget.internal/status?day=${new Date().toISOString().slice(0, 10)}&cap=2`,
+    );
+    expect(((await status.json()) as { used: number }).used).toBe(1);
   });
 });
 

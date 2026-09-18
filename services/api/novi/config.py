@@ -9,11 +9,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-DEV_JWT_SECRET = "dev-only-insecure-secret-change-me"  # noqa: S105
 
 
 class Settings(BaseSettings):
@@ -29,9 +28,13 @@ class Settings(BaseSettings):
     db_pool_size: int = 10
     db_max_overflow: int = 20
     db_echo: bool = False
+    max_request_body_bytes: int = 256 * 1024
+    # Only enable this when every connection is forced through a trusted
+    # reverse proxy which overwrites (rather than appends to) these headers.
+    trust_proxy_headers: bool = False
 
     # ── Auth ─────────────────────────────────────────────────────────────────
-    jwt_secret: str = DEV_JWT_SECRET
+    jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     # Short-lived on purpose. Logout only burns the refresh row; a stolen
     # access JWT stays valid until exp. Seven days made theft durable.
@@ -39,9 +42,9 @@ class Settings(BaseSettings):
     access_token_ttl_seconds: int = 60 * 60
     refresh_token_ttl_seconds: int = 60 * 60 * 24 * 60
 
-    # Developer skip-login. Empty means the route exists in development/test
-    # and is absent in production. A non-empty value must be presented as
-    # `secret` on POST /auth/dev-skip, in every environment.
+    # Developer skip-login is opt-in, even outside production. This avoids an
+    # omitted ENV silently exposing a passwordless account.
+    dev_skip_enabled: bool = False
     dev_skip_secret: str = ""
 
     # ── Console (Cloudflare Worker that stores accounts + API usage) ─────────
@@ -131,24 +134,32 @@ class Settings(BaseSettings):
         return bool(self.ai_api_key)
 
     def check_production(self) -> None:
-        """Refuse to serve production with development secrets."""
-        if not self.is_production:
-            return
+        """Refuse to serve with missing secrets or unsafe production settings."""
         problems = []
-        if self.jwt_secret == DEV_JWT_SECRET:
-            problems.append("JWT_SECRET is still the development default")
         if len(self.jwt_secret) < 32:
-            problems.append("JWT_SECRET must be at least 32 characters")
+            problems.append("JWT_SECRET must be a unique value of at least 32 characters")
+        if not self.is_production:
+            if problems:
+                raise RuntimeError("Refusing to start: " + "; ".join(problems))
+            return
         if "*" in self.cors_origins:
             problems.append("CORS_ORIGINS must not be '*'")
         if self.debug:
             problems.append("DEBUG must be false")
-        if self.dev_skip_secret:
-            problems.append("DEV_SKIP_SECRET must be unset in production")
+        if self.db_echo:
+            problems.append("DB_ECHO must be false")
+        if self.dev_skip_enabled or self.dev_skip_secret:
+            problems.append("developer skip-login must be disabled in production")
         if self.console_base_url and len(self.console_origin_secret) < 32:
             problems.append(
                 "CONSOLE_ORIGIN_SECRET must be at least 32 characters when CONSOLE_BASE_URL is set"
             )
+        for name, value in (
+            ("CONSOLE_BASE_URL", self.console_base_url),
+            ("AI_BASE_URL", self.ai_base_url),
+        ):
+            if value and urlparse(value).scheme.lower() != "https":
+                problems.append(f"{name} must use HTTPS in production")
         if problems:
             raise RuntimeError("Refusing to start: " + "; ".join(problems))
 

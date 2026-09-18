@@ -11,6 +11,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from novi.models import (
@@ -69,19 +70,21 @@ def promote(current: str, candidate: str) -> str:
 async def get_or_create_progress(
     db: AsyncSession, user_id: uuid.UUID, concept_id: uuid.UUID
 ) -> LearningProgress:
-    row = (
+    await db.execute(
+        insert(LearningProgress)
+        .values(user_id=user_id, concept_id=concept_id)
+        .on_conflict_do_nothing(index_elements=["user_id", "concept_id"])
+    )
+    return (
         await db.execute(
-            select(LearningProgress).where(
+            select(LearningProgress)
+            .where(
                 LearningProgress.user_id == user_id,
                 LearningProgress.concept_id == concept_id,
             )
+            .with_for_update()
         )
-    ).scalar_one_or_none()
-    if row is None:
-        row = LearningProgress(user_id=user_id, concept_id=concept_id)
-        db.add(row)
-        await db.flush()
-    return row
+    ).scalar_one()
 
 
 async def record_interaction(
@@ -194,20 +197,21 @@ async def award_stamp(
 ) -> PassportStamp | None:
     """Idempotent. Returns the stamp only when it was newly earned, so the
     caller knows whether to show the celebration."""
-    existing = (
+    stamp_id = (
         await db.execute(
-            select(PassportStamp).where(
-                PassportStamp.user_id == user_id,
-                PassportStamp.kind == kind,
-                PassportStamp.key == key,
+            insert(PassportStamp)
+            .values(
+                user_id=user_id,
+                kind=kind,
+                key=key,
+                title=title,
+                subtitle=subtitle,
+                icon=icon,
             )
+            .on_conflict_do_nothing(index_elements=["user_id", "kind", "key"])
+            .returning(PassportStamp.id)
         )
     ).scalar_one_or_none()
-    if existing is not None:
+    if stamp_id is None:
         return None
-    stamp = PassportStamp(
-        user_id=user_id, kind=kind, key=key, title=title, subtitle=subtitle, icon=icon
-    )
-    db.add(stamp)
-    await db.flush()
-    return stamp
+    return await db.get(PassportStamp, stamp_id)

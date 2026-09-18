@@ -40,8 +40,8 @@ function fmt(n) {
 function when(iso) {
   if (!iso) return "—";
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString();
+  if (Number.isNaN(d.getTime())) return "—";
+  return escapeHtml(d.toLocaleString());
 }
 
 function escapeHtml(s) {
@@ -182,8 +182,8 @@ function userView() {
            <td class="mono">${escapeHtml(e.method)}</td>
            <td class="mono">${escapeHtml(e.path)}</td>
            <td>${e.kind === "ai" ? '<span class="pill pill-ai">ai</span>' : escapeHtml(e.kind)}</td>
-           <td class="mono">${e.status}</td>
-           <td class="mono">${e.input_tokens ?? "—"} / ${e.output_tokens ?? "—"}</td>
+           <td class="mono">${escapeHtml(e.status)}</td>
+           <td class="mono">${escapeHtml(e.input_tokens ?? "—")} / ${escapeHtml(e.output_tokens ?? "—")}</td>
            <td class="mono">${when(e.created_at)}</td>
          </tr>`,
     )
@@ -240,9 +240,9 @@ function usageView() {
            <td class="mono">${escapeHtml(e.method)}</td>
            <td class="mono">${escapeHtml(e.path)}</td>
            <td>${e.kind === "ai" ? '<span class="pill pill-ai">ai</span>' : escapeHtml(e.kind)}</td>
-           <td class="mono">${e.status}</td>
-           <td class="mono">${e.latency_ms ?? 0}</td>
-           <td class="mono">${e.input_tokens ?? "—"} / ${e.output_tokens ?? "—"}</td>
+           <td class="mono">${escapeHtml(e.status)}</td>
+           <td class="mono">${escapeHtml(e.latency_ms ?? 0)}</td>
+           <td class="mono">${escapeHtml(e.input_tokens ?? "—")} / ${escapeHtml(e.output_tokens ?? "—")}</td>
            <td class="mono">${when(e.created_at)}</td>
          </tr>`,
     )

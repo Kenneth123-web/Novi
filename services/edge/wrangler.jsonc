@@ -17,7 +17,7 @@
     // 0 turns caching off. Responses are held at the edge, so this is a
     // data-at-rest decision as much as a cost one — see README.
     "CACHE_TTL_SECONDS": "86400",
-    // A guard rail, not a ledger. See the comment on `withinBudget`.
+    // Atomically enforced by BudgetCounter.
     "DAILY_REQUEST_CAP": "2000",
     // Requests larger than this are refused before they are read. An
     // explanation prompt is a few KB; anything near the cap is a mistake or
@@ -31,6 +31,16 @@
       // Replace with your own: `wrangler kv namespace create EDGE_KV`
       "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
     }
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      { "name": "BUDGET_COUNTER", "class_name": "BudgetCounter" }
+    ]
+  },
+
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["BudgetCounter"] }
   ],
 
   // Per-caller burst control, enforced before the request costs anything

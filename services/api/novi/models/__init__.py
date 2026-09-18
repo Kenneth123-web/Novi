@@ -30,7 +30,7 @@ from novi.models.learning import (
     QuizResult,
     SavedContent,
 )
-from novi.models.user import Profile, Session, User
+from novi.models.user import Profile, RateLimitBucket, Session, User
 
 __all__ = [
     "INTERACTION_TYPES",
@@ -56,6 +56,7 @@ __all__ = [
     "Quiz",
     "QuizQuestion",
     "QuizResult",
+    "RateLimitBucket",
     "SavedContent",
     "Session",
     "Subject",

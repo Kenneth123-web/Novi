@@ -85,6 +85,10 @@ async def ask(
     ).scalar_one_or_none()
 
     content = await db.get(Content, content_id) if content_id else None
+    if content_id and content is None:
+        raise NotFound("Content not found")
+    if concept_id and await db.get(Concept, concept_id) is None:
+        raise NotFound("Concept not found")
     subjects = list(profile.subject_order) if profile else []
 
     known = await _known_concepts(db, user.id)
@@ -296,5 +300,4 @@ async def concepts_for_content(db: AsyncSession, content_id: uuid.UUID) -> list[
 
 async def subject_of(db: AsyncSession, concept: Concept) -> Subject | None:
     return await db.get(Subject, concept.subject_id)
-
 

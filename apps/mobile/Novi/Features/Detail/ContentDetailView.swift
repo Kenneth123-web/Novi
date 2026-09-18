@@ -114,8 +114,7 @@ struct ContentDetailView: View {
 
     private func askButton(_ detail: ContentDetailDTO) -> some View {
         VStack(spacing: NV.Space.s) {
-            if let raw = detail.content.url,
-               let url = URL(string: raw),
+            if let url = NetworkURLPolicy.external(detail.content.url),
                !detail.content.isSample {
                 NVButton(
                     title: "Open on \(detail.content.platform.capitalized)",

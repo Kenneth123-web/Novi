@@ -4,11 +4,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import delete, select
+from sqlalchemy.dialects.postgresql import insert
 
 from novi.core.deps import DB, CurrentUser
 from novi.core.errors import NotFound, ValidationFailed
 from novi.core.ratelimit import rate_limit
-from novi.models import INTERACTION_TYPES, Content, ContentLike, SavedContent
+from novi.models import Concept, Content, ContentLike, SavedContent
 from novi.schemas.common import Ok
 from novi.schemas.content import (
     ContentDetail,
@@ -22,6 +23,10 @@ from novi.schemas.profile import ConceptOut
 from novi.services import ask_service, content_service, knowledge, recommend
 
 router = APIRouter(tags=["feed"])
+
+CLIENT_INTERACTION_TYPES = {
+    "VIEW", "SHARE", "SKIP", "SEARCH", "CONCEPT_OPEN", "PROJECT_CREATE"
+}
 
 
 @router.get("/feed", response_model=FeedResponse)
@@ -94,11 +99,15 @@ async def track(body: InteractionRequest, user: CurrentUser, db: DB) -> Ok:
     event name, and a new signal should not need a new route and a new client
     release to start being collected.
     """
-    if body.kind not in INTERACTION_TYPES:
+    if body.kind not in CLIENT_INTERACTION_TYPES:
         raise ValidationFailed(
             f"Unknown interaction: {body.kind}",
-            details={"field": "kind", "allowed": list(INTERACTION_TYPES)},
+            details={"field": "kind", "allowed": sorted(CLIENT_INTERACTION_TYPES)},
         )
+    if body.content_id and await db.get(Content, body.content_id) is None:
+        raise NotFound("Content not found")
+    if body.concept_id and await db.get(Concept, body.concept_id) is None:
+        raise NotFound("Concept not found")
     concept_ids = []
     if body.content_id:
         concept_ids = [c.id for c in await ask_service.concepts_for_content(db, body.content_id)]
@@ -120,32 +129,34 @@ async def track(body: InteractionRequest, user: CurrentUser, db: DB) -> Ok:
 async def save(content_id: uuid.UUID, body: SaveRequest, user: CurrentUser, db: DB) -> Ok:
     if await db.get(Content, content_id) is None:
         raise NotFound("Content not found")
-    existing = (
-        await db.execute(
-            select(SavedContent).where(
-                SavedContent.user_id == user.id, SavedContent.content_id == content_id
-            )
-        )
-    ).scalar_one_or_none()
-    # Idempotent: a double-tap on the save button is a double-tap, not an error.
-    if existing is None:
-        db.add(
-            SavedContent(user_id=user.id, content_id=content_id, collection=body.collection)
-        )
+    result = await db.execute(
+        insert(SavedContent)
+        .values(user_id=user.id, content_id=content_id, collection=body.collection)
+        .on_conflict_do_nothing(index_elements=["user_id", "content_id"])
+    )
+    if result.rowcount:
+        concept_ids = [c.id for c in await ask_service.concepts_for_content(db, content_id)]
         await knowledge.record_interaction(
-            db, user_id=user.id, kind="SAVE", content_id=content_id
+            db,
+            user_id=user.id,
+            kind="SAVE",
+            content_id=content_id,
+            concept_ids=concept_ids,
         )
     return Ok()
 
 
 @router.delete("/content/{content_id}/save", response_model=Ok)
 async def unsave(content_id: uuid.UUID, user: CurrentUser, db: DB) -> Ok:
-    await db.execute(
+    removed = await db.execute(
         delete(SavedContent).where(
             SavedContent.user_id == user.id, SavedContent.content_id == content_id
-        )
+        ).returning(SavedContent.id)
     )
-    await knowledge.record_interaction(db, user_id=user.id, kind="UNSAVE", content_id=content_id)
+    if removed.scalar_one_or_none() is not None:
+        await knowledge.record_interaction(
+            db, user_id=user.id, kind="UNSAVE", content_id=content_id
+        )
     return Ok()
 
 
@@ -153,17 +164,19 @@ async def unsave(content_id: uuid.UUID, user: CurrentUser, db: DB) -> Ok:
 async def like(content_id: uuid.UUID, user: CurrentUser, db: DB) -> Ok:
     if await db.get(Content, content_id) is None:
         raise NotFound("Content not found")
-    existing = (
-        await db.execute(
-            select(ContentLike).where(
-                ContentLike.user_id == user.id, ContentLike.content_id == content_id
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is None:
-        db.add(ContentLike(user_id=user.id, content_id=content_id))
+    result = await db.execute(
+        insert(ContentLike)
+        .values(user_id=user.id, content_id=content_id)
+        .on_conflict_do_nothing(index_elements=["user_id", "content_id"])
+    )
+    if result.rowcount:
+        concept_ids = [c.id for c in await ask_service.concepts_for_content(db, content_id)]
         await knowledge.record_interaction(
-            db, user_id=user.id, kind="LIKE", content_id=content_id
+            db,
+            user_id=user.id,
+            kind="LIKE",
+            content_id=content_id,
+            concept_ids=concept_ids,
         )
     return Ok()
 

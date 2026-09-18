@@ -50,9 +50,8 @@ targets:
               NSExceptionAllowsInsecureHTTPLoads: true
             127.0.0.1:
               NSExceptionAllowsInsecureHTTPLoads: true
-        # Device builds talk to the Mac over the LAN. Without this string
-        # iOS never prompts, and HTTP to the host IP fails closed.
-        NSLocalNetworkUsageDescription: Novi talks to the API on your Mac.
+        # Debug builds may discover a local HTTPS development endpoint.
+        NSLocalNetworkUsageDescription: Novi connects to your local development API.
         # Filled from Configs/Local.xcconfig at build time. Empty on a
         # fresh clone, which keeps the simulator on loopback.
         NOVAPIBaseURL: $(NOV_API_BASE_URL)

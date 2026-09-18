@@ -17,7 +17,14 @@
 function json(data: unknown, status = 200, headers: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { "content-type": "application/json", ...headers },
+    headers: {
+      "content-type": "application/json",
+      "cache-control": "no-store, private",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "x-frame-options": "DENY",
+      ...headers,
+    },
   });
 }
 
@@ -103,8 +110,37 @@ type AccountBody = {
   created_at?: string | null;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validUuid(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function validString(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length > 0 && value.length <= max;
+}
+
+function boundedString(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.length <= max;
+}
+
+function validIso(value: unknown): value is string {
+  return typeof value === "string" && value.length <= 40 && !Number.isNaN(Date.parse(value));
+}
+
 async function ingestAccount(env: Env, body: AccountBody): Promise<Response> {
-  if (!body.id || !body.email || !body.username) {
+  if (
+    !isRecord(body) ||
+    !validUuid(body.id) ||
+    !validString(body.email, 320) ||
+    !validString(body.username, 40) ||
+    (body.created_at != null && !validIso(body.created_at)) ||
+    (body.display_name != null && !boundedString(body.display_name, 80)) ||
+    (body.event != null && !validString(body.event, 32)) ||
+    (body.source != null && !validString(body.source, 40))
+  ) {
     return err(422, "VALIDATION_ERROR", "id, email and username are required");
   }
   const at = nowIso();
@@ -160,7 +196,17 @@ type UsageBody = {
 };
 
 async function ingestUsage(env: Env, body: UsageBody): Promise<Response> {
-  if (!body.method || !body.path || typeof body.status !== "number") {
+  const finiteNumber = (value: unknown, min: number, max: number): value is number =>
+    typeof value === "number" && Number.isFinite(value) && value >= min && value <= max;
+  if (
+    !isRecord(body) ||
+    !validString(body.method, 12) ||
+    !validString(body.path, 200) ||
+    !finiteNumber(body.status, 100, 599) ||
+    (body.latency_ms != null && !finiteNumber(body.latency_ms, 0, 86_400_000)) ||
+    (body.input_tokens != null && !finiteNumber(body.input_tokens, 0, 100_000_000)) ||
+    (body.output_tokens != null && !finiteNumber(body.output_tokens, 0, 100_000_000))
+  ) {
     return err(422, "VALIDATION_ERROR", "method, path and status are required");
   }
   await env.DB.prepare(
@@ -236,11 +282,16 @@ async function adminLogin(request: Request, env: Env): Promise<Response> {
   }
   let body: { password?: string };
   try {
-    body = (await request.json()) as { password?: string };
-  } catch {
+    body = (await readJson(request)) as { password?: string };
+  } catch (error) {
+    if (error instanceof PayloadTooLarge) throw error;
     return err(400, "BAD_REQUEST", "Body is not valid JSON");
   }
-  const presented = body.password ?? "";
+  if (!isRecord(body) || !validString(body.password, 256)) {
+    recordLoginFailure(ip);
+    return err(401, "UNAUTHORIZED", "Wrong password");
+  }
+  const presented = body.password;
   if (!presented || !(await secretMatches(presented, env.ADMIN_PASSWORD))) {
     recordLoginFailure(ip);
     log("console_admin_login_rejected");
@@ -377,7 +428,6 @@ async function adminUser(env: Env, id: string): Promise<Response> {
 async function patchUser(
   request: Request,
   env: Env,
-  ctx: ExecutionContext,
   id: string,
 ): Promise<Response> {
   const existing = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(id).first<{
@@ -388,13 +438,48 @@ async function patchUser(
   if (!existing) return err(404, "RESOURCE_NOT_FOUND", "No such user");
   let body: { is_active?: boolean; display_name?: string };
   try {
-    body = (await request.json()) as typeof body;
-  } catch {
+    body = (await readJson(request)) as typeof body;
+  } catch (error) {
+    if (error instanceof PayloadTooLarge) throw error;
     return err(400, "BAD_REQUEST", "Body is not valid JSON");
+  }
+  if (
+    !isRecord(body) ||
+    (body.is_active !== undefined && typeof body.is_active !== "boolean") ||
+    (body.display_name !== undefined && !boundedString(body.display_name, 80))
+  ) {
+    return err(422, "VALIDATION_ERROR", "Invalid user update");
   }
   const isActive = body.is_active === undefined ? existing.is_active : body.is_active ? 1 : 0;
   const displayName =
     body.display_name === undefined ? existing.display_name : String(body.display_name).slice(0, 80);
+  const origin = (env.API_BASE_URL || "").replace(/\/$/, "");
+  const mutating = body.is_active !== undefined || body.display_name !== undefined;
+  if (mutating && !origin) {
+    return err(503, "ORIGIN_NOT_CONFIGURED", "API origin is required for user changes");
+  }
+  if (origin && mutating) {
+    if (new URL(origin).protocol !== "https:") {
+      return err(503, "ORIGIN_MISCONFIGURED", "API origin must use HTTPS");
+    }
+    try {
+      const callback = await fetch(`${origin}/v1/internal/users/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          "x-novi-origin-secret": env.CONSOLE_ORIGIN_SECRET,
+        },
+        body: JSON.stringify({
+          is_active: body.is_active,
+          display_name: body.display_name,
+        }),
+      });
+      if (!callback.ok) return err(502, "ORIGIN_REJECTED", "API did not accept the change");
+    } catch (error: unknown) {
+      log("console_origin_callback_failed", { error: String(error) });
+      return err(502, "ORIGIN_UNAVAILABLE", "API could not be updated");
+    }
+  }
   await env.DB.prepare("UPDATE users SET is_active = ?, display_name = ? WHERE id = ?")
     .bind(isActive, displayName, id)
     .run();
@@ -413,25 +498,15 @@ async function patchUser(
       .bind(id, nowIso())
       .run();
   }
-  const origin = (env.API_BASE_URL || "").replace(/\/$/, "");
-  if (origin && (body.is_active !== undefined || body.display_name !== undefined)) {
-    ctx.waitUntil(
-      fetch(`${origin}/v1/internal/users/${id}`, {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          "x-novi-origin-secret": env.CONSOLE_ORIGIN_SECRET,
-        },
-        body: JSON.stringify({
-          is_active: body.is_active,
-          display_name: body.display_name,
-        }),
-      }).catch((error: unknown) => {
-        log("console_origin_callback_failed", { error: String(error) });
-      }),
-    );
-  }
   return adminUser(env, id);
+}
+
+function requireSameOrigin(request: Request): Response | null {
+  const origin = request.headers.get("origin");
+  if (!origin || origin !== new URL(request.url).origin) {
+    return err(403, "CSRF_REJECTED", "Request origin rejected");
+  }
+  return null;
 }
 
 async function adminUsage(url: URL, env: Env, userId?: string): Promise<Response> {
@@ -473,8 +548,12 @@ async function adminUsage(url: URL, env: Env, userId?: string): Promise<Response
   return json({ events: rows.results, total: total?.n ?? 0, limit, offset });
 }
 
+class PayloadTooLarge extends Error {}
+
 async function readJson(request: Request): Promise<unknown> {
-  return request.json();
+  const body = await request.arrayBuffer();
+  if (body.byteLength > 262_144) throw new PayloadTooLarge();
+  return JSON.parse(new TextDecoder().decode(body));
 }
 
 export default {
@@ -507,6 +586,8 @@ export default {
         return await adminLogin(request, env);
       }
       if (pathname === "/api/admin/logout" && request.method === "POST") {
+        const rejected = requireSameOrigin(request);
+        if (rejected) return rejected;
         return await adminLogout(request, env);
       }
 
@@ -528,17 +609,25 @@ export default {
         const userMatch = pathname.match(/^\/api\/admin\/users\/([^/]+)(\/usage)?$/);
         if (userMatch) {
           const id = decodeURIComponent(userMatch[1] ?? "");
+          if (!validUuid(id)) return err(404, "RESOURCE_NOT_FOUND", "No such user");
           if (userMatch[2] === "/usage" && request.method === "GET") {
             return await adminUsage(url, env, id);
           }
           if (request.method === "GET") return await adminUser(env, id);
-          if (request.method === "PATCH") return await patchUser(request, env, ctx, id);
+          if (request.method === "PATCH") {
+            const rejected = requireSameOrigin(request);
+            if (rejected) return rejected;
+            return await patchUser(request, env, id);
+          }
         }
         return err(404, "RESOURCE_NOT_FOUND", "No such admin route");
       }
 
       return err(404, "RESOURCE_NOT_FOUND", "No such route");
     } catch (error) {
+      if (error instanceof PayloadTooLarge) {
+        return err(413, "PAYLOAD_TOO_LARGE", "Request body is too large");
+      }
       console.error(JSON.stringify({ event: "console_unhandled", error: String(error) }));
       return err(500, "INTERNAL_ERROR", "Console failed");
     }

@@ -42,18 +42,17 @@ class RegisterRequest(BaseModel):
 
 class LoginRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=1, max_length=128)
 
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: str = Field(min_length=32, max_length=256)
 
 
 class DevSkipRequest(BaseModel):
-    """Body for POST /auth/dev-skip. `secret` is required only when the
-    server has DEV_SKIP_SECRET configured."""
+    """Body for the opt-in developer route; the secret is always required."""
 
-    secret: str = ""
+    secret: str = Field(default="", max_length=256)
 
 
 class TokenPair(BaseModel):

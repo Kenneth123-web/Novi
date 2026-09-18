@@ -43,6 +43,7 @@ struct AuthView: View {
                             .padding(.top, NV.Space.l)
                     }
 
+                    #if DEBUG
                     NVButton(
                         title: mode == .signIn ? "Sign in" : "Create account",
                         loading: busy,
@@ -58,6 +59,7 @@ struct AuthView: View {
                         action: skipDeveloper
                     )
                     .padding(.top, NV.Space.s)
+                    #endif
 
                     toggleRow.padding(.top, NV.Space.l)
                     Spacer(minLength: NV.Space.section)

@@ -7,10 +7,10 @@ RSS needs no key and returns real watch URLs. The Data API is used when
 from __future__ import annotations
 
 import asyncio
-import xml.etree.ElementTree as ET
 from datetime import UTC, datetime
 
 import httpx
+from defusedxml import ElementTree as ET
 
 from novi.config import get_settings
 from novi.core.logging import get_logger
@@ -50,7 +50,7 @@ INVIDIOUS = (
 
 
 def parse_atom(xml_text: str, fallback_creator: str) -> list[Draft]:
-    root = ET.fromstring(xml_text)  # noqa: S314 — YouTube Atom, not untrusted XML
+    root = ET.fromstring(xml_text)
     drafts: list[Draft] = []
     for entry in root.findall(f"{ATOM}entry"):
         video_id = (entry.findtext(f"{YT}videoId") or "").strip()
@@ -108,10 +108,17 @@ async def _rss(http: httpx.AsyncClient, channel_id: str, name: str) -> list[Draf
     try:
         response = await http.get(url)
         response.raise_for_status()
+        if len(response.content) > 1_000_000:
+            logger.warning("youtube_rss_too_large", extra={"channel": name})
+            return []
     except httpx.HTTPError as exc:
         logger.warning("youtube_rss_failed", extra={"channel": name, "error": type(exc).__name__})
         return []
-    return parse_atom(response.text, name)
+    try:
+        return parse_atom(response.text, name)
+    except ET.ParseError:
+        logger.warning("youtube_rss_invalid_xml", extra={"channel": name})
+        return []
 
 
 async def _data_api(http: httpx.AsyncClient, query: str, key: str) -> list[Draft]:

@@ -36,6 +36,7 @@ enum Demo {
     /// land in the product as the reserved developer account. A screenshot of
     /// a state the server cannot produce is not evidence of anything.
     static var skipLogin: Bool { d.bool(forKey: "demoSkipLogin") }
+    static var devSkipSecret: String { d.string(forKey: "devSkipSecret") ?? "" }
 
     /// `-demoQuestion "why does a derivative represent slope"` — open Ask with
     /// the question already asked.
