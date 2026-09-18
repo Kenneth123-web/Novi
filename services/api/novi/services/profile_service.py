@@ -196,9 +196,9 @@ def _normalise_focus_areas(
 ) -> dict[str, list[str]]:
     """Validate within-subject area picks.
 
-    Empty `raw` is the legacy meaning: the whole subject. New clients send
-    at least one area per current/focus subject so ranking can tell genetics
-    from ecology.
+    A missing subject is the whole subject. Clients may send areas for only
+    the chapters they care about — requiring every current class blocked
+    Continue after a biology pick while math still sat blank.
     """
     incoming = raw or {}
     extra = [slug for slug in incoming if slug not in subjects]
@@ -368,7 +368,7 @@ async def apply_onboarding(
     focus_areas = _normalise_focus_areas(
         area_subjects,
         body.focus_areas,
-        require_all=body.focus_areas is not None,
+        require_all=False,
     )
     subject_order = course_subjects + [slug for slug in focus if slug not in course_subjects]
     await _validate_subjects(db, subject_order)
@@ -540,7 +540,7 @@ async def update(db: AsyncSession, user: User, body: ProfileUpdate) -> Profile:
         focus_areas = _normalise_focus_areas(
             area_subjects,
             raw_areas,
-            require_all=body.focus_areas is not None,
+            require_all=False,
             drop_unknown=body.focus_areas is None,
         )
         subject_order = course_subjects + [

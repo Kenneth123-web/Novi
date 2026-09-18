@@ -290,10 +290,6 @@ struct LearningProfileEditor: View {
         !selectedCourses.isEmpty
             && !focusSubjects.isEmpty
             && focusSubjects.allSatisfy { focusGoals[$0] != nil }
-            && editorAreaSubjects(gradeMap).allSatisfy { course in
-                Onb.areas(for: course.subjectSlug).isEmpty
-                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
-            }
             && gradeMap != nil
             && !loading
             && !busy

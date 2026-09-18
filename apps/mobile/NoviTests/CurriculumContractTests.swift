@@ -51,6 +51,32 @@ final class CurriculumContractTests: XCTestCase {
         XCTAssertNil(json["subject_slugs"])
     }
 
+    func testOnboardingBodyOmitsUnpickedSubjectAreas() throws {
+        let body = LearningOnboardingBody(
+            stage: "high",
+            grade: "11",
+            curriculum: "AP",
+            currentCourses: [
+                CurrentCourseSelectionDTO(courseSlug: "high-11-biology", name: ""),
+                CurrentCourseSelectionDTO(courseSlug: "high-11-mathematics", name: ""),
+                CurrentCourseSelectionDTO(courseSlug: "high-11-history", name: ""),
+            ],
+            focusSubjectSlugs: ["biology"],
+            focusGoals: ["biology": "catch_up"],
+            focusAreas: ["biology": ["cells", "ecology"]],
+            learningPreferences: [],
+            goals: [],
+            language: "en"
+        )
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder.novi.encode(body)) as? [String: Any]
+        )
+        let areas = try XCTUnwrap(json["focus_areas"] as? [String: [String]])
+        XCTAssertEqual(areas["biology"], ["cells", "ecology"])
+        XCTAssertNil(areas["mathematics"])
+        XCTAssertNil(areas["history"])
+    }
+
     func testPassportCourseMapDecodesFromTheAPIShape() throws {
         let data = """
         {

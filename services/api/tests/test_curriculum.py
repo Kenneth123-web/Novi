@@ -410,7 +410,7 @@ async def test_onboarding_stores_focus_areas_on_the_passport(
     assert math["focus_areas"] == []
 
 
-async def test_unknown_or_empty_focus_areas_are_rejected(
+async def test_unknown_focus_areas_are_rejected(
     client: AsyncClient, auth: dict, seeded: None
 ) -> None:
     unknown = await _onboard_courses(
@@ -424,6 +424,27 @@ async def test_unknown_or_empty_focus_areas_are_rejected(
     assert unknown.status_code == 422
     assert unknown.json()["error"]["details"]["field"] == "focus_areas"
 
+
+async def test_partial_focus_areas_leave_other_subjects_whole(
+    client: AsyncClient, auth: dict, seeded: None
+) -> None:
+    """A biology pick must not demand math/history chips too — that is what
+    greyed out Continue after the learner had already chosen chapters."""
+    r = await _onboard_courses(
+        client,
+        auth["headers"],
+        courses=[
+            {"course_slug": "high-11-biology", "name": ""},
+            {"course_slug": "high-11-mathematics", "name": ""},
+            {"course_slug": "high-11-history", "name": ""},
+        ],
+        focus=["biology"],
+        goals={"biology": "catch_up"},
+        extra={"focus_areas": {"biology": ["cells", "ecology"]}},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["profile"]["focus_areas"] == {"biology": ["cells", "ecology"]}
+
     empty = await _onboard_courses(
         client,
         auth["headers"],
@@ -432,5 +453,5 @@ async def test_unknown_or_empty_focus_areas_are_rejected(
         goals={"biology": "catch_up"},
         extra={"focus_areas": {}},
     )
-    assert empty.status_code == 422
-    assert empty.json()["error"]["details"]["field"] == "focus_areas"
+    assert empty.status_code == 200, empty.text
+    assert empty.json()["profile"]["focus_areas"] == {}

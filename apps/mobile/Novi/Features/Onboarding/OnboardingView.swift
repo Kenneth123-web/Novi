@@ -121,11 +121,9 @@ struct OnboardingView: View {
         case 3:
             !focusSubjects.isEmpty
                 && focusSubjects.allSatisfy { focusGoals[$0] != nil }
-        case 4:
-            areaSubjects.allSatisfy { course in
-                Onb.areas(for: course.subjectSlug).isEmpty
-                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
-            }
+        // Areas are optional per subject: a blank group means the whole
+        // subject, which is also what the API stores when a key is omitted.
+        case 4: true
         default: true
         }
     }
@@ -452,7 +450,7 @@ struct OnboardingView: View {
             VStack(alignment: .leading, spacing: NV.Space.l) {
                 stepHeading(
                     "Which parts of these subjects?",
-                    "Biology is not one thing, and neither is math. Pick the chapters Novi should actually feed you."
+                    "Biology is not one thing, and neither is math. Pick the chapters Novi should actually feed you. Leave a subject blank to keep the whole thing."
                 )
 
                 ForEach(areaSubjects, id: \.subjectSlug) { course in
@@ -645,11 +643,7 @@ struct OnboardingView: View {
             let grade,
             !currentCourses.isEmpty,
             !focusSubjects.isEmpty,
-            focusSubjects.allSatisfy({ focusGoals[$0] != nil }),
-            areaSubjects.allSatisfy({ course in
-                Onb.areas(for: course.subjectSlug).isEmpty
-                    || !(focusAreas[course.subjectSlug] ?? []).isEmpty
-            })
+            focusSubjects.allSatisfy({ focusGoals[$0] != nil })
         else { return }
         busy = true
         error = nil
