@@ -14,6 +14,8 @@ struct ConceptView: View {
     @State private var detail: ConceptDetailDTO?
     @State private var error: APIError?
     @State private var quizPresented = false
+    @State private var markingLearned = false
+    @State private var learnedMessage: String?
 
     var body: some View {
         ScrollView {
@@ -21,6 +23,13 @@ struct ConceptView: View {
                 header
                 actions
                 if let error { NVErrorNote(message: error.message) }
+                if let learnedMessage {
+                    NVErrorNote(
+                        message: learnedMessage,
+                        icon: "checkmark.circle.fill",
+                        tint: NV.success
+                    )
+                }
                 if let next = detail?.next, !next.isEmpty { whereNext(next) }
                 Spacer(minLength: 90)
             }
@@ -84,8 +93,13 @@ struct ConceptView: View {
                          enabled: detail != nil) {
                     quizPresented = true
                 }
-                NVButton(title: "I know this", icon: "checkmark.seal", kind: .secondary,
-                         enabled: detail != nil) {
+                NVButton(
+                    title: learnedMessage == nil ? "I know this" : "Marked learned",
+                    icon: learnedMessage == nil ? "checkmark.seal" : "checkmark.seal.fill",
+                    kind: .secondary,
+                    loading: markingLearned,
+                    enabled: detail != nil && learnedMessage == nil
+                ) {
                     Task { await markLearned() }
                 }
             }
@@ -136,10 +150,20 @@ struct ConceptView: View {
 
     private func markLearned() async {
         guard let concept = detail?.concept else { return }
-        _ = try? await session.api.authed(
-            .post, "passport/learn",
-            body: MarkLearnedBody(conceptId: concept.id.uuidString),
-            as: EmptyResponse.self
-        )
+        markingLearned = true
+        error = nil
+        do {
+            let _: EmptyResponse = try await session.api.authed(
+                .post, "passport/learn",
+                body: MarkLearnedBody(conceptId: concept.id.uuidString),
+                as: EmptyResponse.self
+            )
+            learnedMessage = "Added to your passport."
+        } catch let e as APIError {
+            error = e
+        } catch {
+            self.error = APIError.transport(error)
+        }
+        markingLearned = false
     }
 }
